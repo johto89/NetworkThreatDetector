@@ -1,7 +1,5 @@
 # Network Traffic Threat Analyzer 
 
-A comprehensive network traffic analysis tool that detects and classifies threats in PCAP files using machine learning and rule-based approaches.
-
 ## 🔍 Overview
 
 Network Traffic Threat Analyzer is a powerful, web-based tool designed to analyze network packet capture (PCAP) files for security threats and anomalies. It combines machine learning models with rule-based detection to identify various network threats such as port scanning, DoS attacks, malware communication, and more.
