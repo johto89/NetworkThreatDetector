@@ -1,0 +1,136 @@
+/* Custom styles for Network Threat Analyzer */
+
+/* Custom icon styling */
+.primary-icon {
+    font-size: 4rem;
+    color: var(--bs-primary);
+    margin-bottom: 1rem;
+}
+
+.icon-container {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background-color: rgba(13, 110, 253, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+}
+
+.stat-icon {
+    font-size: 2rem;
+    color: var(--bs-primary);
+}
+
+/* Upload area styling */
+.upload-area {
+    border: 2px dashed var(--bs-secondary);
+    border-radius: 5px;
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.upload-area:hover, .upload-area.dragover {
+    border-color: var(--bs-primary);
+    background-color: rgba(13, 110, 253, 0.05);
+}
+
+.upload-area.has-file {
+    border-color: var(--bs-success);
+    background-color: rgba(25, 135, 84, 0.05);
+}
+
+.upload-icon {
+    font-size: 3rem;
+    color: var(--bs-secondary);
+    margin-bottom: 1rem;
+}
+
+.upload-area:hover .upload-icon, 
+.upload-area.dragover .upload-icon {
+    color: var(--bs-primary);
+}
+
+.upload-area.has-file .upload-icon {
+    color: var(--bs-success);
+}
+
+/* File type cards */
+.file-type-card {
+    text-align: center;
+    padding: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
+    transition: all 0.3s ease;
+}
+
+.file-type-card i {
+    font-size: 2rem;
+    color: var(--bs-info);
+    margin-bottom: 0.5rem;
+}
+
+.file-type-card:hover {
+    background-color: rgba(13, 202, 240, 0.1);
+    transform: translateY(-5px);
+}
+
+/* Feature icons */
+.feature {
+    padding: 1rem 0;
+}
+
+.feature i {
+    font-size: 1.5rem;
+    color: var(--bs-primary);
+    margin-bottom: 0.5rem;
+}
+
+/* Statistics cards */
+.stat-card {
+    transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* Results page styles */
+.table {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.075);
+}
+
+/* Animation for chart rendering */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+canvas {
+    animation: fadeIn 1s;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .icon-container {
+        width: 80px;
+        height: 80px;
+    }
+    
+    .primary-icon {
+        font-size: 3rem;
+    }
+    
+    .upload-icon {
+        font-size: 2.5rem;
+    }
+}

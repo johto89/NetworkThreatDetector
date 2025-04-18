@@ -1,0 +1,192 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h2 class="card-title text-center mb-4">
+                    <i class="fas fa-shield-alt text-primary me-2"></i>
+                    Network Traffic Threat Analyzer
+                </h2>
+                <p class="lead text-center">Upload PCAP files to detect and analyze potential network threats using advanced machine learning</p>
+                
+                <div class="row mt-4">
+                    <div class="col-md-8 offset-md-2">
+                        <!-- File Upload Form -->
+                        <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data" id="upload-form">
+                            <div class="mb-4">
+                                <div class="upload-area" id="drop-area">
+                                    <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                                    <h4>Drag & Drop Files Here</h4>
+                                    <p class="text-muted">or click to browse files</p>
+                                    <input type="file" name="file" id="file-input" class="d-none" accept=".pcap,.pcapng,.cap,.zip">
+                                    <div class="file-name" id="file-name"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-primary btn-lg">
+                                    <i class="fas fa-search me-2"></i>
+                                    Analyze Network Traffic
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-cogs me-2"></i>
+                    Features & Capabilities
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <i class="fas fa-search feature-icon"></i>
+                                <h5 class="card-title">Threat Detection</h5>
+                                <p class="card-text">Identify potential security threats in network traffic using advanced machine learning algorithms.</p>
+                                <a href="{{ url_for('threat_categories') }}" class="btn btn-sm btn-outline-primary">View Threat Categories</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <i class="fas fa-chart-network feature-icon"></i>
+                                <h5 class="card-title">Traffic Analysis</h5>
+                                <p class="card-text">Comprehensive analysis of network traffic patterns, protocols, and communication flows.</p>
+                                <a href="{{ url_for('training_status') }}" class="btn btn-sm btn-outline-primary">View Model Status</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <i class="fas fa-file-alt feature-icon"></i>
+                                <h5 class="card-title">Detailed Reports</h5>
+                                <p class="card-text">Generate comprehensive reports with actionable insights and recommendations.</p>
+                                <a href="{{ url_for('train_model_route') }}" class="btn btn-sm btn-outline-primary">Train New Data</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-file-code me-2"></i>
+                    Supported File Types
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-3">
+                        <div class="file-type-card">
+                            <i class="fas fa-file"></i>
+                            <h5>.pcap</h5>
+                            <p class="text-muted small">Packet Capture Format</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="file-type-card">
+                            <i class="fas fa-file"></i>
+                            <h5>.pcapng</h5>
+                            <p class="text-muted small">Next Generation Format</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="file-type-card">
+                            <i class="fas fa-file"></i>
+                            <h5>.cap</h5>
+                            <p class="text-muted small">Wireshark Capture</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="file-type-card">
+                            <i class="fas fa-file-archive"></i>
+                            <h5>.zip</h5>
+                            <p class="text-muted small">Archive with PCAP Files</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Handle drag and drop file upload
+    const dropArea = document.getElementById('drop-area');
+    const fileInput = document.getElementById('file-input');
+    const fileName = document.getElementById('file-name');
+    
+    dropArea.addEventListener('click', () => fileInput.click());
+    
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length > 0) {
+            fileName.textContent = fileInput.files[0].name;
+            dropArea.classList.add('has-file');
+        } else {
+            fileName.textContent = '';
+            dropArea.classList.remove('has-file');
+        }
+    });
+    
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropArea.addEventListener(eventName, preventDefaults, false);
+    });
+    
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropArea.addEventListener(eventName, highlight, false);
+    });
+    
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropArea.addEventListener(eventName, unhighlight, false);
+    });
+    
+    function highlight() {
+        dropArea.classList.add('dragover');
+    }
+    
+    function unhighlight() {
+        dropArea.classList.remove('dragover');
+    }
+    
+    dropArea.addEventListener('drop', handleDrop, false);
+    
+    function handleDrop(e) {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        
+        if (files.length > 0) {
+            fileInput.files = files;
+            fileName.textContent = files[0].name;
+            dropArea.classList.add('has-file');
+        }
+    }
+</script>
+{% endblock %}

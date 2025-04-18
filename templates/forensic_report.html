@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forensic Analysis Report - {{ analysis.filename }}</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+        }
+        
+        .forensic-report {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--bs-border-color);
+            padding-bottom: 1rem;
+        }
+        
+        .threat-card {
+            margin-bottom: 1.5rem;
+        }
+        
+        .ioc-table {
+            font-size: 0.9rem;
+        }
+        
+        .packet-sample {
+            font-family: monospace;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            background-color: var(--bs-dark-bg-subtle);
+            border: 1px solid var(--bs-border-color);
+            padding: 1rem;
+            border-radius: 0.375rem;
+        }
+
+        .confidence-high {
+            color: var(--bs-danger);
+        }
+        
+        .confidence-medium {
+            color: var(--bs-warning);
+        }
+        
+        .confidence-low {
+            color: var(--bs-info);
+        }
+        
+        .timeline {
+            position: relative;
+            padding-left: 2rem;
+        }
+        
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 0.5rem;
+            top: 0;
+            height: 100%;
+            width: 2px;
+            background: var(--bs-border-color);
+        }
+        
+        .timeline-item {
+            position: relative;
+            margin-bottom: 1.5rem;
+        }
+        
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -2rem;
+            top: 0.25rem;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--bs-secondary);
+        }
+        
+        .timeline-item.alert::before {
+            background: var(--bs-danger);
+        }
+        
+        .timeline-time {
+            font-size: 0.8rem;
+            color: var(--bs-secondary-color);
+        }
+        
+        .page-container {
+            page-break-after: always;
+        }
+        
+        @media print {
+            .page-container {
+                page-break-after: always;
+            }
+            
+            body {
+                padding: 0;
+                color: #000;
+                background-color: #fff;
+            }
+            
+            .container {
+                max-width: 100%;
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="forensic-report">
+        <div class="container page-container">
+            <div class="header text-center">
+                <h1>Forensic Analysis Report</h1>
+                <p class="text-secondary mt-3">Generated on {{ report_time }}</p>
+                <div class="d-flex justify-content-between align-items-center mt-4">
+                    <div>
+                        <h5>File Information</h5>
+                        <p class="mb-1"><strong>Filename:</strong> {{ analysis.filename }}</p>
+                        <p class="mb-1"><strong>Hash:</strong> {{ analysis.file_hash }}</p>
+                        <p><strong>Analysis Date:</strong> {{ analysis.created_at }}</p>
+                    </div>
+                    <div>
+                        <h5>Analysis Summary</h5>
+                        <p class="mb-1"><strong>Threats Detected:</strong> {{ analysis.detected_threats|length }}</p>
+                        <p class="mb-1"><strong>Traffic Volume:</strong> {{ analysis.result_summary.total_packets }} packets</p>
+                        <p><strong>Risk Level:</strong> 
+                            {% if analysis.result_summary.is_malicious %}
+                            <span class="badge bg-danger">High</span>
+                            {% else %}
+                            <span class="badge bg-success">Low</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <h2>Executive Summary</h2>
+            <div class="card mb-4">
+                <div class="card-body">
+                    <p>
+                        This forensic analysis report details the findings from examining the network capture file 
+                        <strong>{{ analysis.filename }}</strong>. The analysis identified
+                        {% if analysis.detected_threats|length > 0 %}
+                        <strong>{{ analysis.detected_threats|length }}</strong> potential security threats within the network traffic.
+                        The detected threats include:
+                        <ul>
+                            {% for threat in analysis.detected_threats %}
+                            <li><strong>{{ threat.name }}</strong> ({{ threat.confidence|round(2) * 100 }}% confidence)</li>
+                            {% endfor %}
+                        </ul>
+                        {% else %}
+                        <strong>no security threats</strong> within the network traffic.
+                        {% endif %}
+                    </p>
+                    
+                    <p>
+                        The traffic analysis revealed activity involving {{ analysis.traffic_summary.unique_src_ips }} source IPs
+                        and {{ analysis.traffic_summary.unique_dst_ips }} destination IPs, with a total of 
+                        {{ analysis.traffic_summary.total_packets }} packets and {{ analysis.traffic_summary.total_bytes|filesizeformat }} 
+                        of data exchanged.
+                    </p>
+                    
+                    <div class="alert {% if analysis.result_summary.is_malicious %}alert-danger{% else %}alert-success{% endif %}">
+                        <h5 class="alert-heading">Risk Assessment</h5>
+                        <p>
+                            {% if analysis.result_summary.is_malicious %}
+                            This traffic capture contains evidence of malicious activity that requires immediate attention.
+                            The most critical issue is <strong>{{ analysis.detected_threats[0].name }}</strong>.
+                            {% else %}
+                            The analysis did not identify any clear signs of malicious activity in this traffic capture.
+                            However, continuous monitoring is recommended as part of standard security practices.
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Threat Breakdown Section -->
+        {% if analysis.detected_threats|length > 0 %}
+        <div class="container page-container">
+            <h2>Threat Breakdown</h2>
+            
+            {% for threat in analysis.detected_threats %}
+            <div class="card mb-4 threat-card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">{{ threat.name }}</h4>
+                    <span class="badge bg-{% if threat.risk_level == 'High' %}danger{% elif threat.risk_level == 'Medium' %}warning{% else %}info{% endif %}">
+                        {{ threat.risk_level }} Risk
+                    </span>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h5>Description</h5>
+                            <p>{{ threat.description }}</p>
+                            
+                            <h5>Indicators</h5>
+                            <ul>
+                                {% for indicator in threat.indicators %}
+                                <li>{{ indicator }}</li>
+                                {% endfor %}
+                            </ul>
+                            
+                            <h5>Recommended Actions</h5>
+                            <ol>
+                                {% for action in threat.recommended_actions %}
+                                <li>{{ action }}</li>
+                                {% endfor %}
+                            </ol>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card mb-3">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Detection Details</h6>
+                                </div>
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        <span>Confidence</span>
+                                        <span>{{ (threat.confidence * 100)|round(1) }}%</span>
+                                    </li>
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        <span>First Detected</span>
+                                        <span>{{ threat.first_seen }}</span>
+                                    </li>
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        <span>Last Detected</span>
+                                        <span>{{ threat.last_seen }}</span>
+                                    </li>
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        <span>Related Packets</span>
+                                        <span>{{ threat.packet_count }}</span>
+                                    </li>
+                                </ul>
+                            </div>
+                            
+                            <h6>Involved IPs</h6>
+                            <div class="list-group mb-3">
+                                {% for ip in threat.involved_ips %}
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between">
+                                        <div>
+                                            <strong>{{ ip.address }}</strong> 
+                                            <span class="badge bg-secondary">{{ ip.role }}</span>
+                                        </div>
+                                        <span class="badge {% if ip.risk_level == 'High' %}bg-danger{% elif ip.risk_level == 'Medium' %}bg-warning{% else %}bg-info{% endif %}">
+                                            {{ ip.risk_level }}
+                                        </span>
+                                    </div>
+                                    <div class="mt-1 small">
+                                        Traffic: {{ ip.traffic_percentage }}%
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Activity Timeline -->
+                    <h5 class="mt-3">Activity Timeline</h5>
+                    <div class="timeline">
+                        {% for event in threat.timeline %}
+                        <div class="timeline-item {% if event.is_alert %}alert{% endif %}">
+                            <div class="timeline-time">{{ event.time }}</div>
+                            <div class="timeline-content">
+                                <h6>{{ event.title }}</h6>
+                                <p>{{ event.description }}</p>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <!-- Sample Traffic -->
+                    <h5 class="mt-4">Sample Traffic</h5>
+                    <div class="packet-sample">{{ threat.sample_traffic }}</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        
+        <!-- Network Communications Analysis -->
+        <div class="container page-container">
+            <h2>Network Communications Analysis</h2>
+            
+            <div class="row">
+                <div class="col-md-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h5 class="mb-0">Protocol Distribution</h5>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="protocolChart" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h5 class="mb-0">Top Traffic Flows</h5>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="trafficChart" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">IP Communication Map</h5>
+                </div>
+                <div class="card-body">
+                    <div id="communication-map" style="height: 400px;">
+                        <div class="text-center py-5">
+                            <p class="text-muted">Interactive network communication map will be displayed here.</p>
+                            <small class="text-muted">For a detailed network topology, please view this report in an interactive viewer.</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Top Source IPs</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>IP Address</th>
+                                            <th>Packets</th>
+                                            <th>Data Sent</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for ip in traffic.ip_details.sources[:5] %}
+                                        <tr>
+                                            <td>{{ ip.address }}</td>
+                                            <td>{{ ip.packet_count }}</td>
+                                            <td>{{ ip.bytes_sent|filesizeformat }}</td>
+                                            <td>
+                                                <span class="badge {% if ip.is_suspicious %}bg-warning{% else %}bg-success{% endif %}">
+                                                    {% if ip.is_suspicious %}Suspicious{% else %}Normal{% endif %}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Top Destination IPs</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>IP Address</th>
+                                            <th>Packets</th>
+                                            <th>Data Received</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for ip in traffic.ip_details.destinations[:5] %}
+                                        <tr>
+                                            <td>{{ ip.address }}</td>
+                                            <td>{{ ip.packet_count }}</td>
+                                            <td>{{ ip.bytes_received|filesizeformat }}</td>
+                                            <td>
+                                                <span class="badge {% if ip.is_suspicious %}bg-warning{% else %}bg-success{% endif %}">
+                                                    {% if ip.is_suspicious %}Suspicious{% else %}Normal{% endif %}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Indicators of Compromise -->
+        {% if iocs|length > 0 %}
+        <div class="container page-container">
+            <h2>Indicators of Compromise (IOCs)</h2>
+            
+            <div class="card mb-4">
+                <div class="card-body">
+                    <p>
+                        The following indicators of compromise were identified in the analyzed traffic.
+                        These IOCs can be used for threat hunting across your network to identify similar malicious activity.
+                    </p>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-striped ioc-table">
+                            <thead>
+                                <tr>
+                                    <th>Indicator</th>
+                                    <th>Type</th>
+                                    <th>Confidence</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ioc in iocs %}
+                                <tr>
+                                    <td><code>{{ ioc.indicator }}</code></td>
+                                    <td>{{ ioc.type }}</td>
+                                    <td>
+                                        <span class="confidence-{{ ioc.confidence|lower }}">
+                                            {{ ioc.confidence }}
+                                        </span>
+                                    </td>
+                                    <td>{{ ioc.description }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            {% if suspicious_hostnames|length > 0 %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Suspicious Hostnames</h5>
+                </div>
+                <div class="card-body">
+                    <p>
+                        The following hostnames were identified as potentially malicious based on their communication patterns
+                        and association with detected threats.
+                    </p>
+                    
+                    <ul class="list-group">
+                        {% for hostname in suspicious_hostnames %}
+                        <li class="list-group-item">{{ hostname }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+            
+            {% if suspicious_files|length > 0 %}
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Suspicious Files</h5>
+                </div>
+                <div class="card-body">
+                    <p>
+                        The following files were identified in the network traffic and may be associated with malicious activity.
+                    </p>
+                    
+                    <ul class="list-group">
+                        {% for file in suspicious_files %}
+                        <li class="list-group-item">{{ file }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+        
+        <!-- Conclusion and Recommendations -->
+        <div class="container page-container">
+            <h2>Conclusion and Recommendations</h2>
+            
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5>Key Findings</h5>
+                    <ul>
+                        {% if analysis.detected_threats|length > 0 %}
+                        <li>
+                            <strong>Security Incidents:</strong> Detected {{ analysis.detected_threats|length }} potential security 
+                            {% if analysis.detected_threats|length == 1 %}threat{% else %}threats{% endif %} in the analyzed traffic.
+                        </li>
+                        <li>
+                            <strong>Primary Concern:</strong> 
+                            {{ analysis.detected_threats[0].name }} with {{ (analysis.detected_threats[0].confidence * 100)|round(1) }}% confidence.
+                        </li>
+                        {% else %}
+                        <li>
+                            <strong>No Threats Detected:</strong> The analyzed traffic appears to contain normal network activity
+                            with no clear indicators of malicious behavior.
+                        </li>
+                        {% endif %}
+                        <li>
+                            <strong>Traffic Profile:</strong> {{ analysis.traffic_summary.total_packets }} packets analyzed,
+                            involving {{ analysis.traffic_summary.unique_src_ips }} source and
+                            {{ analysis.traffic_summary.unique_dst_ips }} destination IP addresses.
+                        </li>
+                    </ul>
+                    
+                    <h5 class="mt-4">Recommendations</h5>
+                    <ol>
+                        {% if analysis.detected_threats|length > 0 %}
+                        <li>
+                            <strong>Immediate Action:</strong> Isolate affected systems and block communication with suspicious
+                            IP addresses and domains identified in this report.
+                        </li>
+                        <li>
+                            <strong>Investigation:</strong> Conduct a thorough examination of systems involved in suspicious communications,
+                            focusing particularly on {{ analysis.detected_threats[0].name }} indicators.
+                        </li>
+                        <li>
+                            <strong>Security Controls:</strong> Review and strengthen security controls specific to the detected threats,
+                            particularly focusing on {{ analysis.detected_threats[0].recommended_actions[0]|lower }}.
+                        </li>
+                        {% else %}
+                        <li>
+                            <strong>Continued Monitoring:</strong> While no immediate threats were detected, maintain regular
+                            network monitoring as part of standard security practices.
+                        </li>
+                        <li>
+                            <strong>Baseline Establishment:</strong> Use this analysis as part of your baseline for normal network
+                            traffic patterns to help identify anomalies in the future.
+                        </li>
+                        {% endif %}
+                        <li>
+                            <strong>Security Awareness:</strong> Ensure all users are aware of and follow security best practices,
+                            particularly regarding phishing prevention and secure web browsing.
+                        </li>
+                        <li>
+                            <strong>Policy Review:</strong> Review and update network security policies and incident response
+                            procedures to reflect current threat landscape.
+                        </li>
+                    </ol>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Report Authentication</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <p class="mb-1"><strong>Report ID:</strong> FR-{{ analysis.id }}-{{ analysis.created_at|replace(' ', '-')|replace(':', '-') }}</p>
+                            <p class="mb-1"><strong>Generation Date:</strong> {{ report_time }}</p>
+                            <p><strong>Analysis Version:</strong> v2.1.4</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="mb-1">Generated by</p>
+                            <h5>Network Threat Analyzer</h5>
+                            <p class="small text-muted">Deep Learning Enhanced Forensic Analysis</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Chart data and rendering
+        document.addEventListener('DOMContentLoaded', function() {
+            // Protocol distribution chart
+            const protocolLabels = ['TCP', 'UDP', 'ICMP', 'HTTP', 'HTTPS', 'DNS', 'Other'];
+            const protocolData = [
+                {{ analysis.traffic_summary.tcp_packets|default(0) }},
+                {{ analysis.traffic_summary.udp_packets|default(0) }},
+                {{ analysis.traffic_summary.icmp_packets|default(0) }},
+                {{ analysis.traffic_summary.http_packets|default(0) }},
+                {{ analysis.traffic_summary.https_packets|default(0) }},
+                {{ analysis.traffic_summary.dns_packets|default(0) }},
+                {{ analysis.traffic_summary.other_packets|default(0) }}
+            ];
+            
+            new Chart(document.getElementById('protocolChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: protocolLabels,
+                    datasets: [{
+                        data: protocolData,
+                        backgroundColor: [
+                            'rgba(54, 162, 235, 0.8)',
+                            'rgba(255, 99, 132, 0.8)',
+                            'rgba(255, 205, 86, 0.8)',
+                            'rgba(75, 192, 192, 0.8)',
+                            'rgba(153, 102, 255, 0.8)',
+                            'rgba(255, 159, 64, 0.8)',
+                            'rgba(201, 203, 207, 0.8)'
+                        ],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+            
+            // Traffic flows chart
+            const flowLabels = [];
+            const flowData = [];
+            
+            {% for flow in traffic.flows[:5] %}
+            flowLabels.push('{{ flow.src_ip }}:{{ flow.src_port }} → {{ flow.dst_ip }}:{{ flow.dst_port }}');
+            flowData.push({{ flow.bytes }});
+            {% endfor %}
+            
+            new Chart(document.getElementById('trafficChart'), {
+                type: 'bar',
+                data: {
+                    labels: flowLabels,
+                    datasets: [{
+                        label: 'Bytes Transferred',
+                        data: flowData,
+                        backgroundColor: 'rgba(75, 192, 192, 0.8)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>

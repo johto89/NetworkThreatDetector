@@ -1,0 +1,446 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2>
+                <i class="fas fa-tags text-primary me-2"></i>
+                Threat Categories
+            </h2>
+            <div>
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
+                    <i class="fas fa-plus me-2"></i>
+                    Add New Category
+                </button>
+            </div>
+        </div>
+
+        </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-list me-2"></i>
+                    All Categories
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Risk Level</th>
+                                <th>Indicators</th>
+                                <th>Description</th>
+                                <th>Training Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for category in categories %}
+                            <tr>
+                                <td>{{ category.name }}</td>
+                                <td>
+                                    {% if category.risk_level == 'High' %}
+                                    <span class="badge bg-danger">High</span>
+                                    {% elif category.risk_level == 'Medium' %}
+                                    <span class="badge bg-warning">Medium</span>
+                                    {% else %}
+                                    <span class="badge bg-success">Low</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ category.indicators|length }} indicators</td>
+                                <td>{{ category.description|truncate(50) }}</td>
+                                <td>
+                                    {% if category.is_trained %}
+                                    <span class="badge bg-success">Trained ({{ category.sample_count }} samples)</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Not Trained</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button type="button" class="btn btn-sm btn-outline-primary me-1 view-category-btn" 
+                                            data-category-id="{{ category.id }}">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+
+                                    <button type="button" class="btn btn-sm btn-outline-warning me-1 edit-category-btn" 
+                                            data-category-id="{{ category.id }}"
+                                            data-builtin="{{ category.is_builtin }}"
+                                            {% if category.is_builtin %}disabled title="Cannot edit built-in categories"{% endif %}>
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+
+                                    <button type="button" class="btn btn-sm btn-outline-danger delete-category-btn" 
+                                            data-category-id="{{ category.id }}" 
+                                            data-category-name="{{ category.name }}"
+                                            data-builtin="{{ category.is_builtin }}"
+                                            data-trained="{{ category.is_trained }}"
+                                            {% if category.is_builtin %}disabled title="Cannot delete built-in categories"
+                                            {% elif category.is_trained %}disabled title="Cannot delete categories with training data"{% endif %}>
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+
+                            {% if not categories %}
+                            <tr>
+                                <td colspan="6" class="text-center">No threat categories found</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Category Modal -->
+<div class="modal fade" id="addCategoryModal" tabindex="-1" aria-labelledby="addCategoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addCategoryModalLabel">Add New Threat Category</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ url_for('add_threat_category') }}" method="post">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Category Name</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="risk_level" class="form-label">Risk Level</label>
+                        <select class="form-select" id="risk_level" name="risk_level" required>
+                            <option value="Low">Low</option>
+                            <option value="Medium" selected>Medium</option>
+                            <option value="High">High</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" name="description" rows="3" required></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="indicators" class="form-label">Indicators (one per line)</label>
+                        <textarea class="form-control" id="indicators" name="indicators" rows="3"></textarea>
+                        <div class="form-text">List the indicators that help identify this threat category, one per line.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="recommended_actions" class="form-label">Recommended Actions (one per line)</label>
+                        <textarea class="form-control" id="recommended_actions" name="recommended_actions" rows="3"></textarea>
+                        <div class="form-text">List the recommended actions to take when this threat is detected, one per line.</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add Category</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Category Modal -->
+<div class="modal fade" id="editCategoryModal" tabindex="-1" aria-labelledby="editCategoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editCategoryModalLabel">Edit Threat Category</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ url_for('edit_threat_category') }}" method="post">
+                <div class="modal-body">
+                    <input type="hidden" id="edit_id" name="id">
+
+                    <div class="mb-3">
+                        <label for="edit_name" class="form-label">Category Name</label>
+                        <input type="text" class="form-control" id="edit_name" name="name" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="edit_risk_level" class="form-label">Risk Level</label>
+                        <select class="form-select" id="edit_risk_level" name="risk_level" required>
+                            <option value="Low">Low</option>
+                            <option value="Medium">Medium</option>
+                            <option value="High">High</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="edit_description" class="form-label">Description</label>
+                        <textarea class="form-control" id="edit_description" name="description" rows="3" required></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="edit_indicators" class="form-label">Indicators (one per line)</label>
+                        <textarea class="form-control" id="edit_indicators" name="indicators" rows="3"></textarea>
+                        <div class="form-text">List the indicators that help identify this threat category, one per line.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="edit_recommended_actions" class="form-label">Recommended Actions (one per line)</label>
+                        <textarea class="form-control" id="edit_recommended_actions" name="recommended_actions" rows="3"></textarea>
+                        <div class="form-text">List the recommended actions to take when this threat is detected, one per line.</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- View Category Modal -->
+<div class="modal fade" id="viewCategoryModal" tabindex="-1" aria-labelledby="viewCategoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="viewCategoryModalLabel">Threat Category Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <h4 id="view_name"></h4>
+                        <div class="mb-2">
+                            <strong>Risk Level:</strong> <span id="view_risk_level" class="badge bg-danger"></span>
+                        </div>
+                        <div class="mb-2">
+                            <strong>Training Status:</strong> <span id="view_training_status"></span>
+                        </div>
+                        <div class="mb-2">
+                            <strong>Type:</strong> <span id="view_type"></span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <strong>Description</strong>
+                            </div>
+                            <div class="card-body">
+                                <p id="view_description"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <strong>Indicators</strong>
+                            </div>
+                            <div class="card-body">
+                                <ul id="view_indicators" class="list-group list-group-flush">
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <strong>Recommended Actions</strong>
+                            </div>
+                            <div class="card-body">
+                                <ul id="view_recommended_actions" class="list-group list-group-flush">
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Category Modal -->
+<div class="modal fade" id="deleteCategoryModal" tabindex="-1" aria-labelledby="deleteCategoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteCategoryModalLabel">Confirm Deletion</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete the category <strong id="delete_category_name"></strong>?</p>
+                <p class="text-danger">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form action="{{ url_for('delete_threat_category') }}" method="post">
+                    <input type="hidden" id="delete_id" name="id">
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // View category details
+    document.querySelectorAll('.view-category-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const categoryId = this.getAttribute('data-category-id');
+
+            fetch(`/threat-categories/${categoryId}/data`)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('view_name').textContent = data.name;
+
+                    const riskBadge = document.getElementById('view_risk_level');
+                    riskBadge.textContent = data.risk_level;
+
+                    if (data.risk_level === 'High') {
+                        riskBadge.className = 'badge bg-danger';
+                    } else if (data.risk_level === 'Medium') {
+                        riskBadge.className = 'badge bg-warning';
+                    } else {
+                        riskBadge.className = 'badge bg-success';
+                    }
+
+                    document.getElementById('view_description').textContent = data.description;
+                    document.getElementById('view_type').textContent = data.is_builtin ? 'Built-in' : 'Custom';
+
+                    if (data.is_trained) {
+                        document.getElementById('view_training_status').innerHTML = `<span class="badge bg-success">Trained (${data.sample_count} samples)</span>`;
+                    } else {
+                        document.getElementById('view_training_status').innerHTML = '<span class="badge bg-secondary">Not Trained</span>';
+                    }
+
+                    // Clear indicators and recommended actions
+                    const indicatorsList = document.getElementById('view_indicators');
+                    const actionsList = document.getElementById('view_recommended_actions');
+
+                    indicatorsList.innerHTML = '';
+                    actionsList.innerHTML = '';
+
+                    // Add indicators
+                    if (data.indicators && data.indicators.length > 0) {
+                        data.indicators.forEach(indicator => {
+                            const li = document.createElement('li');
+                            li.className = 'list-group-item';
+                            li.innerHTML = `<i class="fas fa-check-circle text-success me-2"></i>${indicator}`;
+                            indicatorsList.appendChild(li);
+                        });
+                    } else {
+                        const li = document.createElement('li');
+                        li.className = 'list-group-item';
+                        li.textContent = 'No indicators defined';
+                        indicatorsList.appendChild(li);
+                    }
+
+                    // Add recommended actions
+                    if (data.recommended_actions && data.recommended_actions.length > 0) {
+                        data.recommended_actions.forEach(action => {
+                            const li = document.createElement('li');
+                            li.className = 'list-group-item';
+                            li.innerHTML = `<i class="fas fa-arrow-right text-primary me-2"></i>${action}`;
+                            actionsList.appendChild(li);
+                        });
+                    } else {
+                        const li = document.createElement('li');
+                        li.className = 'list-group-item';
+                        li.textContent = 'No recommended actions defined';
+                        indicatorsList.appendChild(li);
+                    }
+
+                    // Show the modal
+                    const viewModal = new bootstrap.Modal(document.getElementById('viewCategoryModal'));
+                    viewModal.show();
+                })
+                .catch(error => {
+                    console.error('Error fetching category data:', error);
+                    alert('Error loading category details');
+                });
+        });
+    });
+
+    // Edit category
+    document.querySelectorAll('.edit-category-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const categoryId = this.getAttribute('data-category-id');
+
+            fetch(`/threat-categories/${categoryId}/data`)
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.is_builtin) {
+                        document.getElementById('edit_id').value = data.id;
+                        document.getElementById('edit_name').value = data.name;
+                        document.getElementById('edit_risk_level').value = data.risk_level;
+                        document.getElementById('edit_description').value = data.description;
+
+                        // Format indicators and recommended actions for textarea
+                        if (data.indicators && data.indicators.length > 0) {
+                            document.getElementById('edit_indicators').value = data.indicators.join('\n');
+                        } else {
+                            document.getElementById('edit_indicators').value = '';
+                        }
+
+                        if (data.recommended_actions && data.recommended_actions.length > 0) {
+                            document.getElementById('edit_recommended_actions').value = data.recommended_actions.join('\n');
+                        } else {
+                            document.getElementById('edit_recommended_actions').value = '';
+                        }
+
+                        // Show the modal
+                        const editModal = new bootstrap.Modal(document.getElementById('editCategoryModal'));
+                        editModal.show();
+                    } else {
+                        alert('Cannot edit built-in categories');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching category data:', error);
+                    alert('Error loading category details');
+                });
+        });
+    });
+
+    // Delete category
+    document.querySelectorAll('.delete-category-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const categoryId = this.getAttribute('data-category-id');
+            const categoryName = this.getAttribute('data-category-name');
+            const isBuiltin = this.getAttribute('data-builtin') === 'true';
+            const isTrained = this.getAttribute('data-trained') === 'true';
+
+            if (isBuiltin) {
+                alert('Cannot delete built-in categories');
+                return;
+            }
+
+            if (isTrained) {
+                alert('Cannot delete categories with training data');
+                return;
+            }
+
+            document.getElementById('delete_id').value = categoryId;
+            document.getElementById('delete_category_name').textContent = categoryName;
+
+            const deleteModal = new bootstrap.Modal(document.getElementById('deleteCategoryModal'));
+            deleteModal.show();
+        });
+    });
+});
+</script>
+{% endblock %}

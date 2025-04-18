@@ -1,0 +1,288 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2>
+                <i class="fas fa-chart-network text-primary me-2"></i>
+                Detailed Traffic Analysis
+            </h2>
+            <div>
+                <a href="{{ url_for('view_analysis', analysis_id=analysis_id) }}" class="btn btn-outline-primary">
+                    <i class="fas fa-arrow-left me-2"></i>
+                    Back to Results
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-pie me-2"></i>
+                    Protocol Distribution
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="protocol-chart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-project-diagram me-2"></i>
+                    IP Communication Map
+                </h5>
+            </div>
+            <div class="card-body ip-communication-map">
+                <canvas id="network-graph" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-exchange-alt me-2"></i>
+                    Traffic Flows
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped" id="flows-table">
+                        <thead>
+                            <tr>
+                                <th>Source IP</th>
+                                <th>Source Port</th>
+                                <th>Destination IP</th>
+                                <th>Destination Port</th>
+                                <th>Protocol</th>
+                                <th>Packets</th>
+                                <th>Data Volume</th>
+                                <th>Duration</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for flow in traffic.flows %}
+                            <tr {% if flow.is_suspicious %}class="suspicious"{% endif %}>
+                                <td>{{ flow.src_ip }}</td>
+                                <td>{{ flow.src_port }}</td>
+                                <td>{{ flow.dst_ip }}</td>
+                                <td>{{ flow.dst_port }}</td>
+                                <td>{{ flow.protocol }}</td>
+                                <td>{{ flow.packet_count }}</td>
+                                <td>{{ flow.data_volume }}</td>
+                                <td>{{ flow.duration }}</td>
+                                <td>
+                                    {% if flow.is_suspicious %}
+                                    <span class="badge bg-warning">Suspicious</span>
+                                    {% else %}
+                                    <span class="badge bg-success">Normal</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-server me-2"></i>
+                    IP Address Details
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped" id="ip-table">
+                        <thead>
+                            <tr>
+                                <th>IP Address</th>
+                                <th>Type</th>
+                                <th>Location</th>
+                                <th>ASN</th>
+                                <th>Organization</th>
+                                <th>Packets Sent</th>
+                                <th>Packets Received</th>
+                                <th>Data Sent</th>
+                                <th>Data Received</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ip in traffic.ip_details %}
+                            <tr {% if ip.is_suspicious %}class="suspicious"{% endif %}>
+                                <td>{{ ip.address }}</td>
+                                <td>{{ ip.type }}</td>
+                                <td>{{ ip.location }}</td>
+                                <td>{{ ip.asn }}</td>
+                                <td>{{ ip.organization }}</td>
+                                <td>{{ ip.packets_sent }}</td>
+                                <td>{{ ip.packets_received }}</td>
+                                <td>{{ ip.data_sent }}</td>
+                                <td>{{ ip.data_received }}</td>
+                                <td>
+                                    {% if ip.is_suspicious %}
+                                    <span class="badge bg-warning">Suspicious</span>
+                                    {% else %}
+                                    <span class="badge bg-success">Normal</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Protocol Chart
+    const protocolCtx = document.getElementById('protocol-chart').getContext('2d');
+    const protocolLabels = {{ traffic.protocol_labels|tojson }};
+    const protocolValues = {{ traffic.protocol_values|tojson }};
+    
+    const protocolColors = [
+        'rgba(13, 110, 253, 0.7)',  // primary
+        'rgba(220, 53, 69, 0.7)',   // danger
+        'rgba(25, 135, 84, 0.7)',   // success
+        'rgba(255, 193, 7, 0.7)',   // warning
+        'rgba(108, 117, 125, 0.7)', // secondary
+        'rgba(13, 202, 240, 0.7)',  // info
+    ];
+    
+    const protocolChart = new Chart(protocolCtx, {
+        type: 'doughnut',
+        data: {
+            labels: protocolLabels,
+            datasets: [{
+                data: protocolValues,
+                backgroundColor: protocolColors,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'right',
+                }
+            }
+        }
+    });
+    
+    // Network Graph
+    const networkCanvas = document.getElementById('network-graph');
+    const width = networkCanvas.clientWidth;
+    const height = networkCanvas.clientHeight;
+    
+    // Node data from server
+    const nodes = {{ traffic.nodes|tojson }};
+    const links = {{ traffic.links|tojson }};
+    
+    // D3 force simulation
+    const svg = d3.select(networkCanvas)
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height);
+    
+    // Create simulation
+    const simulation = d3.forceSimulation(nodes)
+        .force("link", d3.forceLink(links).id(d => d.id))
+        .force("charge", d3.forceManyBody().strength(-300))
+        .force("center", d3.forceCenter(width / 2, height / 2));
+    
+    // Add links
+    const link = svg.append("g")
+        .selectAll("line")
+        .data(links)
+        .join("line")
+        .attr("stroke", d => d.suspicious ? "red" : "#999")
+        .attr("stroke-opacity", 0.6)
+        .attr("stroke-width", d => Math.sqrt(d.value));
+    
+    // Add nodes
+    const node = svg.append("g")
+        .selectAll("circle")
+        .data(nodes)
+        .join("circle")
+        .attr("r", 8)
+        .attr("fill", d => d.suspicious ? "red" : "steelblue");
+    
+    // Add labels
+    const label = svg.append("g")
+        .selectAll("text")
+        .data(nodes)
+        .join("text")
+        .text(d => d.id)
+        .attr("font-size", "10px")
+        .attr("dx", 10)
+        .attr("dy", 3);
+    
+    // Add tick event
+    simulation.on("tick", () => {
+        link
+            .attr("x1", d => d.source.x)
+            .attr("y1", d => d.source.y)
+            .attr("x2", d => d.target.x)
+            .attr("y2", d => d.target.y);
+        
+        node
+            .attr("cx", d => d.x)
+            .attr("cy", d => d.y);
+        
+        label
+            .attr("x", d => d.x)
+            .attr("y", d => d.y);
+    });
+    
+    // Add drag capability
+    node.call(d3.drag()
+        .on("start", dragstarted)
+        .on("drag", dragged)
+        .on("end", dragended));
+    
+    function dragstarted(event) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        event.subject.fx = event.subject.x;
+        event.subject.fy = event.subject.y;
+    }
+    
+    function dragged(event) {
+        event.subject.fx = event.x;
+        event.subject.fy = event.y;
+    }
+    
+    function dragended(event) {
+        if (!event.active) simulation.alphaTarget(0);
+        event.subject.fx = null;
+        event.subject.fy = null;
+    }
+});
+</script>
+{% endblock %}

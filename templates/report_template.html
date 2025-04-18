@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professional Network Threat Analysis Report</title>
+    <style>
+        :root {
+            --primary-color: #0050b3;
+            --secondary-color: #e6f7ff;
+            --warning-color: #ff4d4f;
+            --success-color: #52c41a;
+            --medium-risk: #faad14;
+            --high-risk: #ff4d4f;
+            --critical-risk: #a8071a;
+            --border-color: #d9d9d9;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background-color: white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 20px 30px;
+            position: relative;
+        }
+        
+        .header h1 {
+            margin: 0;
+            color: white;
+            font-size: 24px;
+        }
+        
+        .header-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        
+        .confidential-marker {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: var(--warning-color);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        
+        h1, h2, h3 { 
+            color: var(--primary-color); 
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+            padding: 20px 30px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .section h3 + .chart-container {
+            height: 200px; 
+        }
+        
+        .threat-details {
+            margin-top: 20px;
+        }
+        
+        .threat-category {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        th { 
+            background-color: #f7f7f7; 
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+        
+        tr:hover {
+            background-color: #f9f9f9;
+        }
+        
+        .risk-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        
+        .risk-low {
+            background-color: var(--success-color);
+        }
+        
+        .risk-medium {
+            background-color: var(--medium-risk);
+        }
+        
+        .risk-high {
+            background-color: var(--high-risk);
+        }
+        
+        .risk-critical {
+            background-color: var(--critical-risk);
+        }
+        
+        .data-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .data-card {
+            background-color: white;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            padding: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Make all cards in data-grid equal width */
+        .data-grid .data-card {
+            min-width: 0; 
+            width: 100%;
+            flex: 1;
+        }
+        
+        .data-card h4 {
+            margin-top: 0;
+            color: var(--primary-color);
+            font-size: 16px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 8px;
+            margin-bottom: 10px;
+        }
+
+        .number-format {
+            font-family: 'Roboto Mono', monospace, 'Courier New', Courier;
+        }
+        
+        .metric {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .metric-label {
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .footer {
+            margin-top: 50px;
+            text-align: center;
+            font-size: 14px;
+            color: #6c757d;
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .chart-container {
+            height: 300px;
+            margin: 20px 0;
+            background-color: white;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            padding: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        
+        .chart-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f9f9f9;
+            color: #999;
+        }
+        
+        .alert-box {
+            border-left: 4px solid var(--warning-color);
+            background-color: #fff2f0;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        
+        .alert-box.info {
+            border-left-color: var(--primary-color);
+            background-color: var(--secondary-color);
+        }
+        
+        .recommendations {
+            background-color: #f6ffed;
+            border: 1px solid #b7eb8f;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        
+        .recommendations h3 {
+            color: var(--success-color);
+            margin-top: 0;
+        }
+        
+        .recommendations ul {
+            padding-left: 20px;
+        }
+        
+        .recommendations li {
+            margin-bottom: 8px;
+        }
+        
+        .ioc-table td:first-child {
+            font-family: monospace;
+            font-size: 14px;
+        }
+        
+        .print-btn {
+            padding: 10px 20px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 20px;
+            transition: background-color 0.3s;
+        }
+        
+        .print-btn:hover {
+            background-color: #003a8c;
+        }
+        
+        .tab-container {
+            margin-top: 20px;
+        }
+        
+        .tab-nav {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 15px;
+        }
+        
+        .tab-btn {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-weight: 500;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        
+        .tab-btn.active {
+            color: var(--primary-color);
+            border-bottom-color: var(--primary-color);
+        }
+        
+        .tab-content > div {
+            display: none;
+        }
+        
+        .tab-content > div.active {
+            display: block;
+        }
+        
+        .timeline {
+            position: relative;
+            margin: 30px 0;
+            padding-left: 30px;
+        }
+        
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background-color: #e8e8e8;
+        }
+        
+        .timeline-item {
+            position: relative;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+        }
+        
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -34px;
+            top: 0;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: var(--primary-color);
+            border: 2px solid white;
+        }
+        
+        .timeline-time {
+            font-weight: bold;
+            color: var(--primary-color);
+            margin-bottom: 5px;
+        }
+        
+        .no-data-message {
+            padding: 20px;
+            text-align: center;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            color: #666;
+            font-style: italic;
+        }
+
+        .protocol-card {
+            max-width: 100%;
+            overflow: hidden;
+        }
+
+        .data-card, 
+        .protocol-card {
+            min-width: 0;
+            width: 100%;
+            flex: 1;
+            margin: 0;
+            box-sizing: border-box;
+            height: auto;
+        }
+        
+        .protocol-table-container {
+            overflow-x: auto;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .protocol-table {
+            width: 100%;
+            font-size: 13px;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+        
+        .protocol-table th {
+            background-color: #f0f7ff;
+            color: #0050b3;
+            font-weight: 600;
+            text-align: left;
+            padding: 12px 15px;
+            border-bottom: 2px solid #d9e8ff;
+            white-space: nowrap; /* Tránh ngắt dòng ở header */
+        }
+        
+        .protocol-table td {
+            padding: 10px 15px;
+            border-bottom: 1px solid #eaeaea;
+            word-break: normal;
+        }
+        
+        .protocol-table th:nth-child(1),
+        .protocol-table td:nth-child(1) {
+            width: 40%;
+        }
+
+        .protocol-table th:nth-child(2),
+        .protocol-table td:nth-child(2) {
+            width: 30%;
+            text-align: center;
+        }
+
+        .protocol-table th:nth-child(3),
+        .protocol-table td:nth-child(3) {
+            width: 30%;
+            text-align: right;
+        }
+        
+        .percentage-col {
+            width: 30%;
+            text-align: right;
+            padding-right: 10px !important;
+        }
+        
+        /* Tăng độ tương phản chữ */
+        .protocol-table td, 
+        .protocol-table th {
+            color: #333333; /* Chữ đậm hơn */
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            letter-spacing: 0.01em; /* Tăng khoảng cách chữ nhẹ */
+        }
+        
+        /* Màu nền xen kẽ cho các hàng */
+        .protocol-table tr:nth-child(even) {
+            background-color: #f9fbff;
+        }
+        
+        .protocol-table tr:hover {
+            background-color: #f0f7ff;
+        }
+        
+        /* Đảm bảo bo góc cho bảng */
+        .protocol-table th:first-child {
+            border-top-left-radius: 5px;
+        }
+        
+        .protocol-table th:last-child {
+            border-top-right-radius: 5px;
+        }
+
+        .protocol-table th,
+        .protocol-table td {
+            padding: 8px 5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .data-grid > div {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .protocol-card h4,
+        .data-card h4 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+
+        /* Metric displays for consistency */
+        .metric {
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .metric-label {
+            font-size: 13px;
+            color: #666;
+        }
+        
+        /* Media queries cho responsive */
+        @media (min-width: 1200px) {
+            .data-grid {
+                grid-template-columns: repeat(3, 1fr); 
+            }
+        }
+        
+        @media (max-width: 900px) {
+            .data-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .protocol-table {
+                font-size: 12px;
+            }
+        }
+        
+        @media (max-width: 600px) {
+            .data-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="confidential-marker">CONFIDENTIAL</div>
+            <h1>Network Threat Analysis Report</h1>
+            <div class="header-meta">
+                <span>Report ID: {{ analysis.id }}</span>
+                <span>Generated: {{ report_time }}</span>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Executive Summary</h2>
+            <div class="alert-box info">
+                <p><strong>Alert Level:</strong> <span id="alert-level">{{ analysis.alert_level | default('Low') }}</span></p>
+                <p><strong>Key Finding:</strong> {{ analysis.key_finding | default('No significant threats detected in this network capture.') }}</p>
+            </div>
+            
+            <p>This report presents the findings from automated analysis of network traffic capture {{ analysis.filename }}. The analysis was conducted using advanced threat intelligence and anomaly detection algorithms.</p>
+            
+            <div class="data-grid">
+                <div class="data-card">
+                    <h4>Analysis Details</h4>
+                    <p><strong>Filename:</strong> {{ analysis.filename }}</p>
+                    <p><strong>Analysis ID:</strong> {{ analysis.id }}</p>
+                    <p><strong>Started:</strong> {{ analysis.created_at }}</p>
+                    <p><strong>Duration:</strong> {{ analysis.duration | default('N/A') }}</p>
+                </div>
+                
+                <div class="data-card">
+                    <h4>Key Metrics</h4>
+                    <div class="metric">{{ analysis.threat_count | default('0') }}</div>
+                    <div class="metric-label">Threats Detected</div>
+                    
+                    <div class="metric">{{ analysis.traffic_summary.total_packets | default('0') }}</div>
+                    <div class="metric-label">Total Packets</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Threat Intelligence</h2>
+            
+            <div class="tab-container">
+                <div class="tab-nav">
+                    <button class="tab-btn active" onclick="showTab('detected-threats')">Detected Threats</button>
+                    <button class="tab-btn" onclick="showTab('ioc-analysis')">IOC Analysis</button>
+                </div>
+                
+                <div class="tab-content">
+                    <div id="detected-threats" class="active">
+                        {% if analysis.detected_threats and analysis.detected_threats|length > 0 %}
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Severity</th>
+                                        <th>Threat Name</th>
+                                        <th>Category</th>
+                                        <th>Confidence</th>
+                                        <th>First Seen</th>
+                                        <th>Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for threat in analysis.detected_threats %}
+                                    <tr>
+                                        <td>
+                                            <span class="risk-indicator risk-{{ threat.get('severity', 'low') | lower }}"></span>
+                                            {{ threat.get('severity', 'Low') | capitalize }}
+                                        </td>
+                                        <td>{{ threat.get('name', 'Unknown') }}</td>
+                                        <td>{{ threat.get('category', 'Undefined') }}</td>
+                                        <td>{{ threat.get('confidence', 'N/A') }}%</td>
+                                        <td>{{ threat.get('first_seen', 'N/A') }}</td>
+                                        <td>
+                                            <a href="#threat-{{ loop.index }}" onclick="toggleThreatDetails('threat-{{ loop.index }}')">View Details</a>
+                                        </td>
+                                    </tr>
+                                    <tr id="threat-{{ loop.index }}" style="display: none;">
+                                        <td colspan="6">
+                                            <div class="threat-details">
+                                                <div class="threat-category">Description:</div>
+                                                <p>{{ threat.get('description', 'No description available.') }}</p>
+                                                
+                                                <div class="threat-category">Affected Systems:</div>
+                                                <p>{{ threat.get('affected_systems', 'Unknown') }}</p>
+                                                
+                                                <div class="threat-category">MITRE ATT&CK Techniques:</div>
+                                                <p>{{ threat.get('mitre_techniques', 'None identified') }}</p>
+                                                
+                                                <div class="threat-category">Remediation:</div>
+                                                <p>{{ threat.get('remediation', 'No specific remediation steps available.') }}</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        {% else %}
+                            <div class="no-data-message">
+                                <p>No threats were detected in this analysis.</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div id="ioc-analysis">
+                        <h3>Indicators of Compromise</h3>
+                        {% if analysis.indicators_of_compromise and analysis.indicators_of_compromise|length > 0 %}
+                            <table class="ioc-table">
+                                <thead>
+                                    <tr>
+                                        <th>Indicator</th>
+                                        <th>Type</th>
+                                        <th>Context</th>
+                                        <th>Malicious Score</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for ioc in analysis.indicators_of_compromise %}
+                                    <tr>
+                                        <td>{{ ioc.get('value', 'Unknown') }}</td>
+                                        <td>{{ ioc.get('type', 'Unknown') }}</td>
+                                        <td>{{ ioc.get('context', 'N/A') }}</td>
+                                        <td>
+                                            <span class="risk-indicator risk-{{ ioc.get('risk_level', 'low') | lower }}"></span>
+                                            {{ ioc.get('score', 'N/A') }}/100
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        {% else %}
+                            <div class="no-data-message">
+                                <p>No indicators of compromise were identified in this analysis.</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Network Traffic Analysis</h2>
+            
+            <div class="chart-container">
+                <div id="traffic-chart-container" style="width: 100%; height: 100%;">
+                    <canvas id="trafficVolumeChart"></canvas>
+                </div>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+                <script>
+                    document.addEventListener('DOMContentLoaded', function() {
+                        // Parse traffic data from the template variable
+                        let trafficData = {{ analysis.traffic_data | default('[]') | safe }};
+                        
+                        // If no data is provided, show "No data available" message
+                        if (!trafficData || trafficData.length === 0) {
+                            const chartContainer = document.getElementById('traffic-chart-container');
+                            chartContainer.innerHTML = '<div class="chart-placeholder">No traffic data available for visualization</div>';
+                            return;
+                        }
+                        
+                        // Extract data for the chart with full date formatting
+                        const labels = trafficData.map(item => {
+                            // If item has a full_timestamp field, use it
+                            if (item.full_timestamp) {
+                                return item.full_timestamp;
+                            }
+                            
+                            // If item has date and timestamp fields, combine them
+                            if (item.date && item.timestamp) {
+                                return `${item.date} ${item.timestamp}`;
+                            }
+                            
+                            // Otherwise just use timestamp
+                            return item.timestamp;
+                        });
+                        const inboundData = trafficData.map(item => item.inbound || 0);
+                        const outboundData = trafficData.map(item => item.outbound || 0);
+                        const totalData = trafficData.map(item => item.total || 0);
+                        
+                        // Get the chart canvas
+                        const ctx = document.getElementById('trafficVolumeChart').getContext('2d');
+                        
+                        // Create the chart
+                        const trafficChart = new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: labels,
+                                datasets: [
+                                    {
+                                        label: 'Total Traffic',
+                                        data: totalData,
+                                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                                        borderColor: 'rgba(54, 162, 235, 1)',
+                                        borderWidth: 2,
+                                        tension: 0.4,
+                                        fill: true
+                                    },
+                                    {
+                                        label: 'Inbound',
+                                        data: inboundData,
+                                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                                        borderColor: 'rgba(75, 192, 192, 1)',
+                                        borderWidth: 2,
+                                        tension: 0.4
+                                    },
+                                    {
+                                        label: 'Outbound',
+                                        data: outboundData,
+                                        backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                                        borderColor: 'rgba(255, 159, 64, 1)',
+                                        borderWidth: 2,
+                                        tension: 0.4
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    title: {
+                                        display: true,
+                                        text: 'Network Traffic Volume Over Time',
+                                        font: {
+                                            size: 16
+                                        }
+                                    },
+                                    tooltip: {
+                                        mode: 'index',
+                                        intersect: false
+                                    },
+                                    legend: {
+                                        position: 'top',
+                                    }
+                                },
+                                scales: {
+                                    y: {
+                                        beginAtZero: true,
+                                        title: {
+                                            display: true,
+                                            text: 'Traffic Volume (KB)'
+                                        }
+                                    },
+                                    x: {
+                                        title: {
+                                            display: true,
+                                            text: 'Date & Time'
+                                        },
+                                        ticks: {
+                                            maxRotation: 45,
+                                            minRotation: 45,
+                                            callback: function(value, index, values) {
+                                                // Get the full label
+                                                const fullLabel = this.getLabelForValue(value);
+                                                
+                                                // If it contains a date and time, format it nicely
+                                                if (fullLabel && fullLabel.includes(' ')) {
+                                                    const [date, time] = fullLabel.split(' ');
+                                                    
+                                                    // For every 4th label, show date and time
+                                                    // otherwise just show time to avoid crowding
+                                                    if (index % 4 === 0) {
+                                                        return `${date}\n${time}`;
+                                                    } else {
+                                                        return time;
+                                                    }
+                                                }
+                                                
+                                                return fullLabel;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    });
+                </script>
+            </div>
+            
+            {% if analysis.traffic_summary %}
+            <div class="data-grid">
+                <div class="data-card">
+                    <h4>IP Statistics</h4>
+                    <p><strong>Unique Source IPs:</strong> {{ analysis.traffic_summary.get('unique_src_ips', 'N/A') }}</p>
+                    <p><strong>Unique Destination IPs:</strong> {{ analysis.traffic_summary.get('unique_dst_ips', 'N/A') }}</p>
+                    <p><strong>Internal to External Ratio:</strong> {{ analysis.traffic_summary.get('internal_external_ratio', 'N/A') }}</p>
+                    <p><strong>Geolocations:</strong> {{ analysis.traffic_summary.get('geolocations_count', 'N/A') }}</p>
+                </div>
+                
+                <div class="data-card">
+                    <h4>Traffic Summary</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                        <div style="flex: 1; min-width: 120px;">
+                            <div class="metric">{{ analysis.traffic_summary.get('total_packets', '0') }}</div>
+                            <div class="metric-label">Total Packets</div>
+                        </div>
+                        <div style="flex: 1; min-width: 120px;">
+                            <div class="metric">{{ (analysis.traffic_summary.get('total_volume', 0) | float | round(2)) }} KB</div>
+                            <div class="metric-label">Data Volume</div>
+                        </div>
+                        <div style="flex: 1; min-width: 120px;">
+                            <div class="metric">{{ (analysis.traffic_summary.get('avg_packet_size', 0) | float | round(2)) }}</div>
+                            <div class="metric-label">Avg. Packet Size</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="data-card protocol-card">
+                    <h4>Protocol Distribution</h4>
+                    {% if analysis.traffic_summary.get('protocols') %}
+                        <div class="protocol-table-container">
+                            <table class="protocol-table">
+                                <thead>
+                                    <tr>
+                                        <th>Protocol</th>
+                                        <th>Count</th>
+                                        <th class="percentage-col">Percentage</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for protocol, count in analysis.traffic_summary.get('protocols', {}).items() %}
+                                    <tr>
+                                        <td>{{ protocol }}</td>
+                                        <td>{{ count }}</td>
+                                        <td class="percentage-col">{{ analysis.traffic_summary.get('protocol_percentages', {})[protocol] | default((count / analysis.traffic_summary.get('total_packets', 1) * 100) | round(1)) }}%</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="no-data-message">
+                            <p>No protocol information available.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+                
+                <div class="section">
+                <h3>Protocol Analysis</h3>
+                <div class="chart-container" style="height: 250px;">
+                    <canvas id="protocolDistributionChart"></canvas>
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            // Get protocol data from the template
+                            const protocolLabels = {{ analysis.traffic_summary.get('protocols', {}).keys() | list | tojson | safe }};
+                            const protocolValues = {{ analysis.traffic_summary.get('protocols', {}).values() | list | tojson | safe }};
+                            
+                            // If no data is provided, show "No data available" message
+                            if (!protocolLabels || protocolLabels.length === 0) {
+                                const chartContainer = document.getElementById('protocolDistributionChart').parentNode;
+                                chartContainer.innerHTML = '<div class="chart-placeholder">No protocol data available for visualization</div>';
+                                return;
+                            }
+                            
+                            // Generate colors
+                            const backgroundColors = [
+                                'rgba(54, 162, 235, 0.6)',
+                                'rgba(255, 99, 132, 0.6)',
+                                'rgba(255, 206, 86, 0.6)',
+                                'rgba(75, 192, 192, 0.6)',
+                                'rgba(153, 102, 255, 0.6)',
+                                'rgba(255, 159, 64, 0.6)',
+                                'rgba(199, 199, 199, 0.6)'
+                            ];
+                            
+                            // Create chart
+                            const protocolCtx = document.getElementById('protocolDistributionChart').getContext('2d');
+                            const protocolChart = new Chart(protocolCtx, {
+                                type: 'doughnut',
+                                data: {
+                                    labels: protocolLabels,
+                                    datasets: [{
+                                        data: protocolValues,
+                                        backgroundColor: backgroundColors.slice(0, protocolLabels.length),
+                                        borderWidth: 1
+                                    }]
+                                },
+                                options: {
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    plugins: {
+                                        title: {
+                                            display: true,
+                                            text: 'Protocol Distribution',
+                                            font: {
+                                                size: 16
+                                            }
+                                        },
+                                        legend: {
+                                            position: 'right',
+                                        },
+                                        tooltip: {
+                                            callbacks: {
+                                                label: function(context) {
+                                                    const label = context.label || '';
+                                                    const value = context.raw || 0;
+                                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                                    const percentage = Math.round((value / total) * 100);
+                                                    return `${label}: ${value} (${percentage}%)`;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                        });
+                    </script>
+                </div>
+            </div>
+            
+            <h3>Anomalous Traffic Patterns</h3>
+                {% if analysis.traffic_summary.get('anomalies') and analysis.traffic_summary.get('anomalies')|length > 0 %}
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Type</th>
+                                <th>Description</th>
+                                <th>Severity</th>
+                                <th>First Observed</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for anomaly in analysis.traffic_summary.get('anomalies', []) %}
+                            <tr>
+                                <td>{{ anomaly.get('type', 'Unknown') }}</td>
+                                <td>{{ anomaly.get('description', 'No description') }}</td>
+                                <td>
+                                    <span class="risk-indicator risk-{{ anomaly.get('severity', 'low') | lower }}"></span>
+                                    {{ anomaly.get('severity', 'Low') | capitalize }}
+                                </td>
+                                <td>{{ anomaly.get('first_observed', 'N/A') }}</td>
+                                <td>
+                                    <button onclick="toggleSection('anomaly-details-{{ loop.index }}')" class="print-btn" style="padding: 5px 10px; font-size: 12px;">
+                                        View
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr id="anomaly-details-{{ loop.index }}" style="display: none;">
+                                <td colspan="5">
+                                    <div style="padding: 15px; background-color: #f8f9fa; border-radius: 5px; margin: 10px 0;">
+                                        <h4>Affected IPs</h4>
+                                        {% if anomaly.get('affected_ips') and anomaly.get('affected_ips')|length > 0 %}
+                                            <ul>
+                                                {% for ip in anomaly.get('affected_ips') %}
+                                                    <li>{{ ip }}</li>
+                                                {% endfor %}
+                                            </ul>
+                                        {% else %}
+                                            <p>No specific IPs identified</p>
+                                        {% endif %}
+                                        
+                                        <h4>Technical Details</h4>
+                                        <p>{{ anomaly.get('technical_details', 'No additional technical details available.') }}</p>
+                                        
+                                        {% if anomaly.get('sample_packets') %}
+                                            <h4>Sample Packets</h4>
+                                            <pre style="background-color: #f0f0f0; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 12px; max-height: 150px;">{{ anomaly.get('sample_packets') }}</pre>
+                                        {% endif %}
+                                        
+                                        <h4>Recommended Actions</h4>
+                                        {% if anomaly.get('recommended_actions') and anomaly.get('recommended_actions')|length > 0 %}
+                                            <ul>
+                                                {% for action in anomaly.get('recommended_actions') %}
+                                                    <li>{{ action }}</li>
+                                                {% endfor %}
+                                            </ul>
+                                        {% else %}
+                                            <ul>
+                                                <li>Monitor the affected systems</li>
+                                                <li>Investigate suspicious traffic patterns</li>
+                                            </ul>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <div class="alert-box info">
+                        <p>No anomalous traffic patterns were detected in this capture.</p>
+                        <p>Regular monitoring is still recommended as some sophisticated threats may not trigger anomaly detection.</p>
+                    </div>
+                {% endif %}
+            {% else %}
+                <div class="no-data-message">
+                    <p>No traffic analysis data available.</p>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="section">
+            <h2>Temporal Analysis</h2>
+            
+            <h3>Activity Timeline</h3>
+            <div class="timeline">
+                {% if analysis.timeline and analysis.timeline|length > 0 %}
+                    {% for event in analysis.timeline %}
+                    <div class="timeline-item">
+                        <div class="timeline-time">{{ event.get('timestamp', 'Unknown time') }}</div>
+                        <div class="timeline-title">{{ event.get('event', 'Unknown event') }}</div>
+                        <div class="timeline-desc">{{ event.get('details', '') }}</div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="timeline-item">
+                        <div class="timeline-time">{{ analysis.created_at }}</div>
+                        <div class="timeline-title">Analysis Started</div>
+                        <div class="timeline-desc">Network capture analysis initiated</div>
+                    </div>
+                    <div class="timeline-item">
+                        <div class="timeline-time">{{ report_time }}</div>
+                        <div class="timeline-title">Report Generated</div>
+                        <div class="timeline-desc">Analysis completed and report generated</div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Traffic Flows</h2>
+            
+            {% if traffic and traffic.flows and traffic.flows|length > 0 %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Source IP</th>
+                            <th>Destination IP</th>
+                            <th>Protocol</th>
+                            <th>Source Port</th>
+                            <th>Destination Port</th>
+                            <th>Packets</th>
+                            <th>Data Volume</th>
+                            <th>First Seen</th>
+                            <th>Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for flow in traffic.flows %}
+                        <tr {% if flow.is_malicious %}style="background-color: #fff1f0;"{% endif %}>
+                            <td>{{ flow.src_ip }}</td>
+                            <td>{{ flow.dst_ip }}</td>
+                            <td>{{ flow.protocol }}</td>
+                            <td>{{ flow.src_port }}</td>
+                            <td>{{ flow.dst_port }}</td>
+                            <td>{{ flow.packet_count }}</td>
+                            <td>{{ flow.data_volume }}</td>
+                            <td>{{ flow.first_packet }}</td>
+                            <td>{{ flow.last_packet }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="no-data-message">
+                    <p>No traffic flow data available.</p>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="section">
+            <h2>IP Addresses Analysis</h2>
+            
+            {% if traffic and traffic.ip_details and traffic.ip_details|length > 0 %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>IP Address</th>
+                            <th>Type</th>
+                            <th>Location</th>
+                            <th>Packets Sent</th>
+                            <th>Packets Received</th>
+                            <th>Data Sent</th>
+                            <th>Data Received</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ip in traffic.ip_details %}
+                        <tr {% if ip.is_suspicious %}style="background-color: #fff1f0;"{% endif %}>
+                            <td>{{ ip.address }}</td>
+                            <td>{{ ip.type }}</td>
+                            <td>{{ ip.location }}</td>
+                            <td>{{ ip.packets_sent }}</td>
+                            <td>{{ ip.packets_received }}</td>
+                            <td>{{ ip.data_sent }}</td>
+                            <td>{{ ip.data_received }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="no-data-message">
+                    <p>No IP address analysis data available.</p>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="section">
+            <h2>Recommendations</h2>
+            <div class="recommendations">
+                <h3>Security Recommendations</h3>
+                {% if analysis.recommendations and analysis.recommendations|length > 0 %}
+                    <ul>
+                        {% for rec in analysis.recommendations %}
+                        <li>{{ rec }}</li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <ul>
+                        <li>Consider implementing regular network traffic monitoring and analysis.</li>
+                        <li>Deploy intrusion detection/prevention systems if not already in place.</li>
+                        <li>Ensure all systems and applications are updated with the latest security patches.</li>
+                        <li>Review and update firewall rules to restrict unnecessary traffic.</li>
+                        <li>Implement network segmentation to contain potential breaches.</li>
+                    </ul>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Network Threat Analyzer Professional &copy; 2025 | This report is confidential and for authorized personnel only.</p>
+            <p>Analysis ID: {{ analysis.id }} | Report Generated: {{ report_time }}</p>
+            <p>Capture Period: {{ analysis.start_time | default('Unknown') }} to {{ analysis.end_time | default('Unknown') }}</p>
+            <button class="print-btn" onclick="window.print()">
+                Export Report
+            </button>
+        </div>
+    </div>
+
+    <script>
+        function toggleThreatDetails(id) {
+            const element = document.getElementById(id);
+            if (element.style.display === 'none') {
+                element.style.display = 'table-row';
+            } else {
+                element.style.display = 'none';
+            }
+        }
+        
+        function toggleSection(id) {
+            const element = document.getElementById(id);
+            if (element.style.display === 'none') {
+                element.style.display = 'block';
+            } else {
+                element.style.display = 'none';
+            }
+        }
+        
+        function showTab(tabId) {
+            // Hide all tab content
+            const tabContents = document.querySelectorAll('.tab-content > div');
+            tabContents.forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show the selected tab content
+            document.getElementById(tabId).classList.add('active');
+            
+            // Update the active tab button
+            const tabButtons = document.querySelectorAll('.tab-btn');
+            tabButtons.forEach(button => {
+                button.classList.remove('active');
+            });
+            
+            // Find and activate the clicked button
+            event.target.classList.add('active');
+        }
+        
+        // Add event listener after page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize any interactive elements
+            const tabButtons = document.querySelectorAll('.tab-btn');
+            tabButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const tabId = this.getAttribute('data-tab');
+                    showTab(tabId);
+                });
+            });
+            
+            // Look for empty tables and add a "No data available" message
+            const tables = document.querySelectorAll('table');
+            tables.forEach(function(table) {
+                const tbody = table.querySelector('tbody');
+                if (tbody && (!tbody.children.length || tbody.children.length === 1 && tbody.children[0].textContent.trim() === '')) {
+                    const row = document.createElement('tr');
+                    const cell = document.createElement('td');
+                    cell.setAttribute('colspan', '100%');
+                    cell.style.textAlign = 'center';
+                    cell.style.padding = '20px';
+                    cell.textContent = 'No data available';
+                    row.appendChild(cell);
+                    tbody.appendChild(row);
+                }
+            });
+        });
+    </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Tìm và định dạng tất cả các giá trị số trong báo cáo
+            const metricElements = document.querySelectorAll('.metric');
+            
+            metricElements.forEach(function(element) {
+                const text = element.textContent.trim();
+                
+                // Kiểm tra xem đây có phải là một số hợp lệ không
+                if (!isNaN(parseFloat(text)) && isFinite(text)) {
+                    const num = parseFloat(text);
+                    
+                    // Nếu là số thập phân, làm tròn đến 2 chữ số thập phân
+                    if (num % 1 !== 0) {
+                        element.textContent = num.toFixed(2);
+                    }
+                    
+                    // Nếu là số nguyên lớn, định dạng với dấu phân cách hàng nghìn
+                    else if (num >= 1000) {
+                        element.textContent = num.toLocaleString();
+                    }
+                }
+            });
+            
+            // Xử lý các giá trị trung bình có số thập phân dài
+            const avgSizeElements = document.querySelectorAll('div.metric-label:contains("Avg. Packet Size")');
+            avgSizeElements.forEach(function(element) {
+                const metricElement = element.previousElementSibling;
+                if (metricElement && metricElement.classList.contains('metric')) {
+                    const text = metricElement.textContent.trim();
+                    if (!isNaN(parseFloat(text)) && isFinite(text)) {
+                        metricElement.textContent = parseFloat(text).toFixed(2);
+                    }
+                }
+            });
+        });
+        </script>
+</body>
+</html>

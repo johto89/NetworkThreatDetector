@@ -1,0 +1,367 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2>
+                <i class="fas fa-brain text-primary me-2"></i>
+                Model Training Status
+            </h2>
+            <div>
+                <a href="{{ url_for('train_model_route') }}" class="btn btn-primary">
+                    <i class="fas fa-plus me-2"></i>
+                    Train New Data
+                </a>
+            </div>
+        </div>
+        
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>
+            This page shows the current training status of the machine learning model. You can view and manage your training data here.
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-line me-2"></i>
+                    Model Performance
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <div class="stats-card">
+                            <div class="stats-icon">
+                                <i class="fas fa-database"></i>
+                            </div>
+                            <div class="stats-info">
+                                <div class="stats-title">Total Training Samples</div>
+                                <h4 class="stats-value">{{ training_stats.total_samples }}</h4>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="stats-card">
+                            <div class="stats-icon">
+                                <i class="fas fa-tags"></i>
+                            </div>
+                            <div class="stats-info">
+                                <div class="stats-title">Trained Categories</div>
+                                <h4 class="stats-value">{{ training_stats.trained_categories }} / {{ training_stats.total_categories }}</h4>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="stats-card">
+                            <div class="stats-icon">
+                                <i class="fas fa-calendar-alt"></i>
+                            </div>
+                            <div class="stats-info">
+                                <div class="stats-title">Last Training Date</div>
+                                <h4 class="stats-value">{{ training_stats.last_training_date }}</h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">Category Distribution</h6>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="category-chart" height="250"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">Feature Importance</h6>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="feature-chart" height="250"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h3 class="display-4">{{ training_stats.accuracy * 100 | round }}%</h3>
+                                <p class="text-muted mb-0">Accuracy</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h3 class="display-4">{{ training_stats.precision * 100 | round }}%</h3>
+                                <p class="text-muted mb-0">Precision</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h3 class="display-4">{{ training_stats.recall * 100 | round }}%</h3>
+                                <p class="text-muted mb-0">Recall</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h3 class="display-4">{{ training_stats.f1_score * 100 | round }}%</h3>
+                                <p class="text-muted mb-0">F1 Score</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                {% if request.args.get('changes') == 'true' %}
+                <div class="mt-4 d-grid gap-2">
+                    <form action="{{ url_for('retrain_model') }}" method="post">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-sync me-2"></i>
+                            Retrain Model with Updated Data
+                        </button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-database me-2"></i>
+                    Training Data
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Filename</th>
+                                <th>Category</th>
+                                <th>Features</th>
+                                <th>Added Date</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for data in training_data %}
+                            <tr>
+                                <td>{{ data.filename }}</td>
+                                <td>
+                                    <span class="badge 
+                                        {% if data.category.risk_level == 'High' %}
+                                        bg-danger
+                                        {% elif data.category.risk_level == 'Medium' %}
+                                        bg-warning
+                                        {% else %}
+                                        bg-success
+                                        {% endif %}
+                                    ">
+                                        {{ data.category.name }}
+                                    </span>
+                                </td>
+                                <td>{{ data.feature_count }}</td>
+                                <td>{{ data.added_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>
+                                    <button type="button" class="btn btn-sm btn-outline-primary me-1 edit-data-btn"
+                                            data-bs-toggle="modal" data-bs-target="#editDataModal"
+                                            data-id="{{ data.id }}"
+                                            data-filename="{{ data.filename }}"
+                                            data-category="{{ data.category_id }}">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    
+                                    <button type="button" class="btn btn-sm btn-outline-danger delete-data-btn"
+                                            data-bs-toggle="modal" data-bs-target="#deleteDataModal"
+                                            data-id="{{ data.id }}"
+                                            data-filename="{{ data.filename }}">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            
+                            {% if not training_data %}
+                            <tr>
+                                <td colspan="5" class="text-center">No training data found</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Data Modal -->
+<div class="modal fade" id="editDataModal" tabindex="-1" aria-labelledby="editDataModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editDataModalLabel">Edit Training Data</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ url_for('edit_training_data') }}" method="post">
+                <div class="modal-body">
+                    <input type="hidden" id="edit_data_id" name="id">
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Filename</label>
+                        <input type="text" class="form-control" id="edit_data_filename" disabled>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="edit_data_category" class="form-label">Category</label>
+                        <select class="form-select" id="edit_data_category" name="category_id" required>
+                            {% for category in categories %}
+                            <option value="{{ category.id }}">{{ category.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Change the category if this file was incorrectly labeled.</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Data Modal -->
+<div class="modal fade" id="deleteDataModal" tabindex="-1" aria-labelledby="deleteDataModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteDataModalLabel">Confirm Deletion</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete the training data for <strong id="delete_data_filename"></strong>?</p>
+                <p class="text-danger">This action cannot be undone. You will need to retrain the model after deleting this data.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form action="{{ url_for('delete_training_data') }}" method="post">
+                    <input type="hidden" id="delete_data_id" name="id">
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Setup for category distribution chart
+    const categoryCtx = document.getElementById('category-chart').getContext('2d');
+    const categoryLabels = {{ category_labels|tojson }};
+    const categoryValues = {{ category_values|tojson }};
+    
+    const categoryColors = [
+        'rgba(13, 110, 253, 0.7)',  // primary
+        'rgba(220, 53, 69, 0.7)',   // danger
+        'rgba(25, 135, 84, 0.7)',   // success
+        'rgba(255, 193, 7, 0.7)',   // warning
+        'rgba(108, 117, 125, 0.7)', // secondary
+        'rgba(13, 202, 240, 0.7)',  // info
+    ];
+    
+    const categoryChart = new Chart(categoryCtx, {
+        type: 'pie',
+        data: {
+            labels: categoryLabels,
+            datasets: [{
+                data: categoryValues,
+                backgroundColor: categoryColors,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'right',
+                }
+            }
+        }
+    });
+    
+    // Setup for feature importance chart
+    const featureCtx = document.getElementById('feature-chart').getContext('2d');
+    const featureLabels = {{ feature_labels|tojson }};
+    const featureValues = {{ feature_values|tojson }};
+    
+    const featureChart = new Chart(featureCtx, {
+        type: 'bar',
+        data: {
+            labels: featureLabels,
+            datasets: [{
+                label: 'Feature Importance',
+                data: featureValues,
+                backgroundColor: 'rgba(13, 110, 253, 0.7)',
+                borderColor: 'rgba(13, 110, 253, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+    
+    // Handle edit data modal
+    document.querySelectorAll('.edit-data-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const id = this.getAttribute('data-id');
+            const filename = this.getAttribute('data-filename');
+            const category = this.getAttribute('data-category');
+            
+            document.getElementById('edit_data_id').value = id;
+            document.getElementById('edit_data_filename').value = filename;
+            document.getElementById('edit_data_category').value = category;
+        });
+    });
+    
+    // Handle delete data modal
+    document.querySelectorAll('.delete-data-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const id = this.getAttribute('data-id');
+            const filename = this.getAttribute('data-filename');
+            
+            document.getElementById('delete_data_id').value = id;
+            document.getElementById('delete_data_filename').textContent = filename;
+        });
+    });
+});
+</script>
+{% endblock %}

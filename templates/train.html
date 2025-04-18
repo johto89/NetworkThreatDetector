@@ -1,0 +1,483 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2>
+                <i class="fas fa-brain text-primary me-2"></i>
+                Train Model with New Data
+            </h2>
+            <div>
+                <a href="{{ url_for('training_status') }}" class="btn btn-outline-primary">
+                    <i class="fas fa-chart-line me-2"></i>
+                    View Training Status
+                </a>
+            </div>
+        </div>
+        
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>
+            Upload PCAP or CSV files to train the model to detect specific threat categories. Each file must be labeled with a threat category.
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-upload me-2"></i>
+                    Upload Training Files
+                </h5>
+                <div class="form-check form-switch mt-2">
+                    <input class="form-check-input" type="checkbox" id="file-type-toggle">
+                    <label class="form-check-label" for="file-type-toggle">
+                        <span id="file-type-label">Currently: PCAP Files</span>
+                    </label>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- PCAP Upload Form -->
+                <form action="{{ url_for('train_model_route') }}" method="post" enctype="multipart/form-data" id="pcap-training-form">
+                    <div class="mb-4">
+                        <div class="upload-area" id="pcap-drop-area">
+                            <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                            <h4>Drag & Drop PCAP Files Here</h4>
+                            <p class="text-muted">or click to browse files</p>
+                            <input type="file" name="files[]" id="pcap-file-input" class="d-none" accept=".pcap,.pcapng,.cap" multiple>
+                            <div id="pcap-file-list" class="mt-3 text-start"></div>
+                        </div>
+                    </div>
+                    
+                    <h5 class="mb-3">Threat Category</h5>
+                    <div id="pcap-label-container" class="mb-4">
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Add files above to assign labels
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg" id="pcap-train-button" disabled>
+                            <i class="fas fa-brain me-2"></i>
+                            Train Model with PCAP
+                        </button>
+                    </div>
+                </form>
+
+                <!-- CSV Upload Form -->
+                <form action="{{ url_for('train_csv_model') }}" method="post" enctype="multipart/form-data" id="csv-training-form" style="display: none;">
+                    <div class="mb-4">
+                        <div class="upload-area" id="csv-drop-area">
+                            <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                            <h4>Drag & Drop CSV File Here</h4>
+                            <p class="text-muted">or click to browse files</p>
+                            <input type="file" name="csv_file" id="csv-file-input" class="d-none" accept=".csv">
+                            <div id="csv-file-name" class="mt-3 text-center"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="category_id" class="form-label">Threat Category</label>
+                        <div id="csv-label-warning" class="mb-3">
+                            <div class="alert alert-warning">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                Add file above to assign labels
+                            </div>
+                        </div>
+                        <select class="form-select" id="category_id" name="category_id" required style="display: none;">
+                            <option value="" selected disabled>Select a threat category</option>
+                            {% for category in threat_categories %}
+                            <option value="{{ category }}">{{ category }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text" style="display: none;" id="csv-form-text">Select the threat category this data represents.</div>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg" id="csv-train-button" disabled>
+                            <i class="fas fa-brain me-2"></i>
+                            Train Model with CSV
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <!-- Training Info Card -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <span id="info-title">PCAP Training Info</span>
+                </h5>
+            </div>
+            <div class="card-body">
+                <!-- PCAP Info -->
+                <div id="pcap-info">
+                    <h6>Supported PCAP Files:</h6>
+                    <ul class="mb-3">
+                        <li><code>.pcap</code> - Packet Capture Format</li>
+                        <li><code>.pcapng</code> - Next Generation Format</li>
+                        <li><code>.cap</code> - Wireshark Capture</li>
+                    </ul>
+                    <h6>Training Tips:</h6>
+                    <ul class="mb-0">
+                        <li>Use clean, labeled traffic captures</li>
+                        <li>Include representative examples of threats</li>
+                        <li>Add both normal and suspicious traffic</li>
+                    </ul>
+                </div>
+                
+                <!-- CSV Info -->
+                <div id="csv-info" style="display: none;">
+                    <h6>Required CSV Columns:</h6>
+                    <ul class="mb-3">
+                        <li><code>src_ip</code> - Source IP address</li>
+                        <li><code>dst_ip</code> - Destination IP address</li>
+                    </ul>
+
+                    <h6>Recommended Columns:</h6>
+                    <ul class="mb-0">
+                        <li><code>protocol</code> - Protocol number/name</li>
+                        <li><code>src_port</code> - Source port</li>
+                        <li><code>dst_port</code> - Destination port</li>
+                        <li><code>packet_size</code> - Size in bytes</li>
+                        <li><code>timestamp</code> - Packet timestamp</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Thông tin chuyển đổi thay vì công cụ tải xuống -->
+        <div class="card" id="converter-card" style="display: none;">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    CSV Format Tips
+                </h5>
+            </div>
+            <div class="card-body">
+                <p>For best training results, your CSV should include:</p>
+                <ul>
+                    <li>Clean, well-structured network data</li>
+                    <li>Properly labeled threat examples</li>
+                    <li>Both normal and malicious traffic records</li>
+                    <li>Timestamps for temporal analysis</li>
+                </ul>
+                <div class="alert alert-info mt-3 mb-0">
+                    <i class="fas fa-lightbulb me-2"></i>
+                    <small>You can convert PCAP files to CSV using tools like Wireshark, tshark, or specialized Python libraries.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Function to generate threat category options from the server-provided categories
+    function generateThreatCategoryOptions() {
+        // This will be replaced with the server-side generated options
+        let optionsHtml = '';
+        {% for category in threat_categories %}
+        optionsHtml += `<option value="{{ category }}">{{ category }}</option>`;
+        {% endfor %}
+        return optionsHtml;
+    }
+    // Toggle between PCAP and CSV forms
+    const fileTypeToggle = document.getElementById('file-type-toggle');
+    const fileTypeLabel = document.getElementById('file-type-label');
+    const pcapForm = document.getElementById('pcap-training-form');
+    const csvForm = document.getElementById('csv-training-form');
+    const pcapInfo = document.getElementById('pcap-info');
+    const csvInfo = document.getElementById('csv-info');
+    const infoTitle = document.getElementById('info-title');
+    const converterCard = document.getElementById('converter-card');
+    
+    fileTypeToggle.addEventListener('change', function() {
+        if (this.checked) {
+            // Switch to CSV mode
+            pcapForm.style.display = 'none';
+            csvForm.style.display = 'block';
+            pcapInfo.style.display = 'none';
+            csvInfo.style.display = 'block';
+            fileTypeLabel.textContent = 'Currently: CSV Files';
+            infoTitle.textContent = 'CSV Training Info';
+            converterCard.style.display = 'block';
+        } else {
+            // Switch to PCAP mode
+            pcapForm.style.display = 'block';
+            csvForm.style.display = 'none';
+            pcapInfo.style.display = 'block';
+            csvInfo.style.display = 'none';
+            fileTypeLabel.textContent = 'Currently: PCAP Files';
+            infoTitle.textContent = 'PCAP Training Info';
+            converterCard.style.display = 'none';
+        }
+    });
+    
+    // PCAP File Upload Handling
+    const pcapDropArea = document.getElementById('pcap-drop-area');
+    const pcapFileInput = document.getElementById('pcap-file-input');
+    const pcapFileList = document.getElementById('pcap-file-list');
+    const pcapLabelContainer = document.getElementById('pcap-label-container');
+    const pcapTrainButton = document.getElementById('pcap-train-button');
+    
+    pcapDropArea.addEventListener('click', () => pcapFileInput.click());
+    
+    pcapFileInput.addEventListener('change', () => {
+        handlePcapFiles(pcapFileInput.files);
+    });
+    
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        pcapDropArea.addEventListener(eventName, preventDefaults, false);
+    });
+    
+    ['dragenter', 'dragover'].forEach(eventName => {
+        pcapDropArea.addEventListener(eventName, highlightPcap, false);
+    });
+    
+    ['dragleave', 'drop'].forEach(eventName => {
+        pcapDropArea.addEventListener(eventName, unhighlightPcap, false);
+    });
+    
+    pcapDropArea.addEventListener('drop', handlePcapDrop, false);
+    
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    function highlightPcap() {
+        pcapDropArea.classList.add('dragover');
+    }
+    
+    function unhighlightPcap() {
+        pcapDropArea.classList.remove('dragover');
+    }
+    
+    function handlePcapDrop(e) {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        handlePcapFiles(files);
+    }
+    
+    // Function to handle PCAP files
+    function handlePcapFiles(files) {
+        if (files.length > 0) {
+            // Validate file types
+            let validFiles = true;
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const ext = file.name.split('.').pop().toLowerCase();
+                if (!['pcap', 'pcapng', 'cap', 'csv'].includes(ext)) {
+                    validFiles = false;
+                    break;
+                }
+            }
+            
+            if (!validFiles) {
+                alert('Please select only PCAP, PCAPNG, CAP or CSV files');
+                pcapFileInput.value = '';
+                return;
+            }
+            
+            pcapDropArea.classList.add('has-file');
+            
+            // Clear previous file list and label container
+            pcapFileList.innerHTML = '';
+            pcapLabelContainer.innerHTML = '';
+            
+            // Add files to the list
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                
+                // Add to file list
+                const fileItem = document.createElement('div');
+                fileItem.className = 'mb-2';
+                const fileIcon = file.name.endsWith('.csv') ? 'fa-file-csv' : 'fa-file';
+                fileItem.innerHTML = `
+                    <i class="fas ${fileIcon} me-2"></i>
+                    <strong>${file.name}</strong> (${formatFileSize(file.size)})
+                `;
+                pcapFileList.appendChild(fileItem);
+                
+                // Add label selector
+                const labelGroup = document.createElement('div');
+                labelGroup.className = 'mb-3';
+                labelGroup.innerHTML = `
+                    <div class="row g-3 align-items-center">
+                        <div class="col-md-8">
+                            <label for="label_${i}" class="form-label">${file.name}</label>
+                        </div>
+                        <div class="col-md-4">
+                            <select class="form-select" name="label_${i}" id="label_${i}" required>
+                                <option value="" selected disabled>Select a threat category</option>
+                                ${generateThreatCategoryOptions()}
+                            </select>
+                        </div>
+                    </div>
+                `;
+                pcapLabelContainer.appendChild(labelGroup);
+            }
+            
+            // Enable the train button
+            pcapTrainButton.disabled = false;
+        } else {
+            // No files selected
+            pcapDropArea.classList.remove('has-file');
+            pcapFileList.innerHTML = '';
+            pcapLabelContainer.innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Add files above to assign labels
+                </div>
+            `;
+            pcapTrainButton.disabled = true;
+        }
+    }
+    
+    // CSV File Upload Handling
+    const csvDropArea = document.getElementById('csv-drop-area');
+    const csvFileInput = document.getElementById('csv-file-input');
+    const csvFileName = document.getElementById('csv-file-name');
+    const csvTrainButton = document.getElementById('csv-train-button');
+    const csvLabelWarning = document.getElementById('csv-label-warning');
+    const categorySelect = document.getElementById('category_id');
+    const csvFormText = document.getElementById('csv-form-text');
+    
+    csvDropArea.addEventListener('click', () => csvFileInput.click());
+    
+    csvFileInput.addEventListener('change', () => {
+        handleCsvFile(csvFileInput.files);
+    });
+    
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        csvDropArea.addEventListener(eventName, preventDefaults, false);
+    });
+    
+    ['dragenter', 'dragover'].forEach(eventName => {
+        csvDropArea.addEventListener(eventName, highlightCsv, false);
+    });
+    
+    ['dragleave', 'drop'].forEach(eventName => {
+        csvDropArea.addEventListener(eventName, unhighlightCsv, false);
+    });
+    
+    csvDropArea.addEventListener('drop', handleCsvDrop, false);
+    
+    function highlightCsv() {
+        csvDropArea.classList.add('dragover');
+    }
+    
+    function unhighlightCsv() {
+        csvDropArea.classList.remove('dragover');
+    }
+    
+    function handleCsvDrop(e) {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        handleCsvFile(files);
+    }
+    
+    // Function to handle CSV file
+    function handleCsvFile(files) {
+        if (files.length > 0) {
+            const file = files[0];
+            
+            // Check if it's a CSV file
+            if (!file.name.toLowerCase().endsWith('.csv')) {
+                alert('Please select a CSV file');
+                csvFileInput.value = '';
+                csvFileName.textContent = '';
+                csvDropArea.classList.remove('has-file');
+                csvTrainButton.disabled = true;
+                csvLabelWarning.style.display = 'block';
+                categorySelect.style.display = 'none';
+                csvFormText.style.display = 'none';
+                return;
+            }
+            
+            csvFileName.innerHTML = `
+                <div class="mt-2">
+                    <i class="fas fa-file-csv me-2 text-success"></i>
+                    <strong>${file.name}</strong> (${formatFileSize(file.size)})
+                </div>
+            `;
+            csvDropArea.classList.add('has-file');
+            csvTrainButton.disabled = false;
+            
+            // Show category selector and hide warning
+            csvLabelWarning.style.display = 'none';
+            categorySelect.style.display = 'block';
+            csvFormText.style.display = 'block';
+        } else {
+            csvFileName.textContent = '';
+            csvDropArea.classList.remove('has-file');
+            csvTrainButton.disabled = true;
+            
+            // Show warning and hide category selector
+            csvLabelWarning.style.display = 'block';
+            categorySelect.style.display = 'none';
+            csvFormText.style.display = 'none';
+        }
+    }
+    
+    // Format file size
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+    
+    // Submit form validation for PCAP
+    document.getElementById('pcap-training-form').addEventListener('submit', function(e) {
+        const selects = document.querySelectorAll('[id^="label_"]');
+        let valid = true;
+        
+        selects.forEach(select => {
+            if (!select.value) {
+                valid = false;
+                select.classList.add('is-invalid');
+            } else {
+                select.classList.remove('is-invalid');
+            }
+        });
+        
+        if (!valid) {
+            e.preventDefault();
+            alert('Please assign a label to each file');
+        }
+    });
+    
+    // Submit form validation for CSV
+    document.getElementById('csv-training-form').addEventListener('submit', function(e) {
+        const categorySelect = document.getElementById('category_id');
+        
+        if (!categorySelect.value) {
+            e.preventDefault();
+            categorySelect.classList.add('is-invalid');
+            alert('Please select a threat category for the CSV data');
+        } else {
+            categorySelect.classList.remove('is-invalid');
+        }
+        
+        if (!csvFileInput.files.length) {
+            e.preventDefault();
+            alert('Please select a CSV file');
+        }
+    });
+});
+</script>
+{% endblock %}

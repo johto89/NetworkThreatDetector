@@ -1,0 +1,311 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2><i class="fas fa-chart-pie text-primary me-2"></i>Analysis Results</h2>
+            <div>
+                {% if results.analysis_id %}
+                <a href="{{ url_for('export_report', analysis_id=results.analysis_id) }}" class="btn btn-success" target="_blank">
+                    <i class="fas fa-file-export me-2"></i>Export Report
+                </a>
+                {% endif %}
+                <a href="{{ url_for('index') }}" class="btn btn-outline-primary ms-2">
+                    <i class="fas fa-upload me-2"></i>Analyze Another File
+                </a>
+            </div>
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    File Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Filename:</strong> {{ results.get('filename', 'Unknown File') }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Total Packets:</strong> {{ results.get('traffic_summary', {}).get('total_packets', 'N/A') }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-shield-alt me-2"></i>
+                    Threat Summary
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-4">
+                    <div id="threat-chart" style="height: 200px;"></div>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Threat Type</th>
+                                <th>Risk Level</th>
+                                <th>Confidence</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for threat in results.threats %}
+                            <tr>
+                                <td>{{ threat.name }}</td>
+                                <td>
+                                    {% if threat.risk_level == 'High' %}
+                                    <span class="badge bg-danger">High</span>
+                                    {% elif threat.risk_level == 'Medium' %}
+                                    <span class="badge bg-warning">Medium</span>
+                                    {% else %}
+                                    <span class="badge bg-success">Low</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ threat.confidence }}%</td>
+                                <td>
+                                    {% if results.analysis_id %}
+                                    <a href="{{ url_for('threat_details', analysis_id=results.analysis_id, threat_index=loop.index0) }}" class="btn btn-sm btn-outline-primary">
+                                        Details
+                                    </a>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            
+                            {% if not results.threats %}
+                            <tr>
+                                <td colspan="4" class="text-center">No threats detected</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-network-wired me-2"></i>
+                    Traffic Summary
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="stats-card">
+                            <div class="stats-icon">
+                                <i class="fas fa-server"></i>
+                            </div>
+                            <div class="stats-info">
+                                <div class="stats-title">Unique IPs</div>
+                                <h4 class="stats-value">
+                                    {{ results.traffic_summary.unique_src_ips + results.traffic_summary.unique_dst_ips }}
+                                </h4>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="stats-card">
+                            <div class="stats-icon">
+                                <i class="fas fa-exchange-alt"></i>
+                            </div>
+                            <div class="stats-info">
+                                <div class="stats-title">Data Transferred</div>
+                                <h4 class="stats-value">
+                                    {{ results.traffic_summary.total_bytes }} bytes
+                                </h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <div id="protocol-chart" style="height: 200px;"></div>
+                </div>
+                
+                <div class="d-grid">
+                    {% if results.analysis_id %}
+                    <a href="{{ url_for('traffic_details', analysis_id=results.analysis_id) }}" class="btn btn-outline-primary">
+                        <i class="fas fa-chart-line me-2"></i>
+                        Detailed Traffic Analysis
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-tachometer-alt me-2"></i>
+                    Performance Metrics
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-3">
+                        <div class="stats-card">
+                            <div class="stats-icon">
+                                <i class="fas fa-clock"></i>
+                            </div>
+                            <div class="stats-info">
+                                <div class="stats-title">Analysis Time</div>
+                                <h4 class="stats-value">{{ results.summary.analysis_time }} ms</h4>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stats-card">
+                            <div class="stats-icon">
+                                <i class="fas fa-wifi"></i>
+                            </div>
+                            <div class="stats-info">
+                                <div class="stats-title">Protocols Detected</div>
+                                <h4 class="stats-value">{{ results.traffic_summary.protocols|length }}</h4>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stats-card">
+                            <div class="stats-icon">
+                                <i class="fas fa-bullseye"></i>
+                            </div>
+                            <div class="stats-info">
+                                <div class="stats-title">Model Confidence</div>
+                                <h4 class="stats-value">{{ results.summary.avg_confidence }}%</h4>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stats-card">
+                            <div class="stats-icon">
+                                <i class="fas fa-fingerprint"></i>
+                            </div>
+                            <div class="stats-info">
+                                <div class="stats-title">Features Analyzed</div>
+                                <h4 class="stats-value">{{ results.summary.feature_count }}</h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Prepare threat data for chart
+    const threatLabels = [];
+    const threatData = [];
+    const threatColors = [];
+    
+    {% for threat in results.threats %}
+    threatLabels.push("{{ threat.name }}");
+    threatData.push({{ threat.confidence }});
+    
+    {% if threat.risk_level == 'High' %}
+    threatColors.push('rgba(220, 53, 69, 0.7)');  // danger
+    {% elif threat.risk_level == 'Medium' %}
+    threatColors.push('rgba(255, 193, 7, 0.7)');  // warning
+    {% else %}
+    threatColors.push('rgba(25, 135, 84, 0.7)');  // success
+    {% endif %}
+    {% endfor %}
+    
+    // If no threats, show "No Threats" in chart
+    if (threatLabels.length === 0) {
+        threatLabels.push("No Threats");
+        threatData.push(100);
+        threatColors.push('rgba(25, 135, 84, 0.7)');
+    }
+    
+    // Create threat chart
+    const threatCtx = document.getElementById('threat-chart').getContext('2d');
+    const threatChart = new Chart(threatCtx, {
+        type: 'doughnut',
+        data: {
+            labels: threatLabels,
+            datasets: [{
+                data: threatData,
+                backgroundColor: threatColors,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                }
+            }
+        }
+    });
+    
+    // Prepare protocol data for chart
+    const protocolLabels = [];
+    const protocolData = [];
+    const protocolColors = [
+        'rgba(13, 110, 253, 0.7)',  // primary
+        'rgba(220, 53, 69, 0.7)',   // danger
+        'rgba(25, 135, 84, 0.7)',   // success
+        'rgba(255, 193, 7, 0.7)',   // warning
+        'rgba(108, 117, 125, 0.7)', // secondary
+        'rgba(13, 202, 240, 0.7)',  // info
+    ];
+    
+    {% for protocol, count in results.traffic_summary.protocols.items() %}
+    protocolLabels.push("{{ protocol }}");
+    protocolData.push({{ count }});
+    {% endfor %}
+    
+    // Create protocol chart
+    const protocolCtx = document.getElementById('protocol-chart').getContext('2d');
+    const protocolChart = new Chart(protocolCtx, {
+        type: 'pie',
+        data: {
+            labels: protocolLabels,
+            datasets: [{
+                data: protocolData,
+                backgroundColor: protocolColors,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}
