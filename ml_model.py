@@ -9,6 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, VotingClassifier, AdaBoostClassifier, StackingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
+from web_phishing_detector import detect_web_phishing
 from pcap_processor import extract_statistical_features, process_pcap_file
 from models import ThreatCategoryEnum
 from csv_processor import process_csv_file, csv_to_pcap_features
@@ -20,19 +21,80 @@ scaler = None
 
 THREAT_CATEGORY_MAP = [
     # Normal Traffic
-        ThreatCategoryEnum.NORMAL,
-        # Reconnaissance (Scanning & Probing)
-        ThreatCategoryEnum.RECONNAISSANCE,
-        ThreatCategoryEnum.DOS_DDOS,
-        ThreatCategoryEnum.NETWORK_PROTOCOL_ATTACKS,
-        ThreatCategoryEnum.NETWORK_DEVICE_ATTACKS,
-        ThreatCategoryEnum.WEB_ATTACKS,
-        ThreatCategoryEnum.WEB_PHISHING,
-        ThreatCategoryEnum.SERVER_ATTACKS,
-        # Malicious Behavior (Malware & C2)
-        ThreatCategoryEnum.MALICIOUS_BEHAVIOR,
-        ThreatCategoryEnum.UNKNOWN
+    ThreatCategoryEnum.NORMAL,
+    # Reconnaissance (Scanning & Probing)
+    ThreatCategoryEnum.RECONNAISSANCE,
+    ThreatCategoryEnum.DOS_DDOS,
+    ThreatCategoryEnum.NETWORK_PROTOCOL_ATTACKS,
+    ThreatCategoryEnum.NETWORK_DEVICE_ATTACKS,
+    ThreatCategoryEnum.WEB_ATTACKS,
+    ThreatCategoryEnum.WEB_PHISHING,
+    ThreatCategoryEnum.SERVER_ATTACKS,
+    # Malicious Behavior (Malware & C2)
+    ThreatCategoryEnum.MALICIOUS_BEHAVIOR,
+    ThreatCategoryEnum.UNKNOWN
 ]
+
+def create_feature_vector(packet_data, stats, include_extended_features=False):
+    """
+    Create a consistent feature vector from packet data and statistics
+    for both training and prediction.
+    
+    Args:
+        packet_data: List of packet feature dictionaries
+        stats: Statistical features extracted from the packets
+        include_extended_features: Boolean to control inclusion of extended feature set
+                                  (True for training, False for basic prediction)
+        
+    Returns:
+        List containing the feature vector
+    """
+    # Base feature vector - used for both training and prediction
+    feature_vector = [
+        len(packet_data),  # Number of packets
+        stats.get('avg_packet_size', 0),
+        stats.get('min_packet_size', 0),
+        stats.get('max_packet_size', 0),
+        stats.get('std_packet_size', 0),
+        stats.get('unique_src_ips', 0),
+        stats.get('unique_dst_ips', 0),
+        stats.get('unique_src_ports', 0),
+        stats.get('unique_dst_ports', 0),
+        stats.get('potential_scan_ports', 0),
+        int(stats.get('potential_port_scan', False)),
+        int(stats.get('potential_dos', False)),
+        stats.get('protocol_counts', {}).get('TCP', 0),
+        stats.get('protocol_counts', {}).get('UDP', 0),
+        stats.get('protocol_counts', {}).get('ICMP', 0),
+        stats.get('protocol_counts', {}).get('HTTP', 0),
+        stats.get('protocol_counts', {}).get('HTTPS', 0),
+        stats.get('protocol_counts', {}).get('DNS', 0),
+        stats.get('protocol_counts', {}).get('OTHER', 0),
+        # Add additional packet-derived features
+        sum(1 for p in packet_data if p.get('has_payload', False)) / max(1, len(packet_data)),  # Payload ratio
+        sum(p.get('payload_entropy', 0) for p in packet_data) / max(1, len(packet_data)),  # Avg entropy
+        sum(p.get('ttl', 0) for p in packet_data) / max(1, len(packet_data)),  # Avg TTL
+        np.std([p.get('packet_size', 0) for p in packet_data]) if len(packet_data) > 1 else 0  # Packet size std
+    ]
+    
+    # Extended features - used primarily for training with more detailed analysis
+    if include_extended_features:
+        # Additional protocol counts (ensuring no duplication with base features)
+        protocol_counts = stats.get('protocol_counts', {})
+        for protocol in ['ARP', 'OTHER']:  # Only adding protocols not in base vector
+            if protocol not in ['TCP', 'UDP', 'ICMP', 'HTTP', 'HTTPS', 'DNS']:  # Avoid duplication
+                feature_vector.append(protocol_counts.get(protocol, 0))
+        
+        # Add time-based features if available
+        if 'time_stats' in stats:
+            feature_vector.append(stats['time_stats'].get('avg_interarrival_time', 0))
+            feature_vector.append(stats['time_stats'].get('std_interarrival_time', 0))
+            feature_vector.append(stats['time_stats'].get('max_packets_per_second', 0))
+        else:
+            # Default values if time stats not available
+            feature_vector.extend([0, 0, 0])
+    
+    return feature_vector
 
 def build_model(use_advanced=True, use_class_weights=True):
     """
@@ -269,35 +331,8 @@ def train_model(input_files, labels, window_size=100, step_size=50):
                 # Extract statistical features for this window
                 stats = extract_statistical_features(window)
                 
-                # Create feature vector
-                feature_vector = [
-                    len(window),  # Number of packets in this window
-                    stats.get('avg_packet_size', 0),
-                    stats.get('min_packet_size', 0),
-                    stats.get('max_packet_size', 0),
-                    stats.get('std_packet_size', 0),
-                    stats.get('unique_src_ips', 0),
-                    stats.get('unique_dst_ips', 0),
-                    stats.get('unique_src_ports', 0),
-                    stats.get('unique_dst_ports', 0),
-                    stats.get('potential_scan_ports', 0),
-                    1 if stats.get('potential_port_scan', False) else 0,
-                    1 if stats.get('potential_dos', False) else 0,
-                ]
-                
-                # Add protocol counts
-                protocol_counts = stats.get('protocol_counts', {})
-                for protocol in ['TCP', 'UDP', 'ICMP', 'DNS', 'HTTP', 'HTTPS', 'ARP', 'OTHER']:
-                    feature_vector.append(protocol_counts.get(protocol, 0))
-                
-                # Add time-based features
-                if 'time_stats' in stats:
-                    feature_vector.append(stats['time_stats'].get('avg_interarrival_time', 0))
-                    feature_vector.append(stats['time_stats'].get('std_interarrival_time', 0))
-                    feature_vector.append(stats['time_stats'].get('max_packets_per_second', 0))
-                else:
-                    # Default values if time stats not available
-                    feature_vector.extend([0, 0, 0])
+                # Create feature vector with extended features for training
+                feature_vector = create_feature_vector(window, stats, include_extended_features=True)
                 
                 # Add to feature list
                 all_features.append(feature_vector)
@@ -515,33 +550,8 @@ def preprocess_features(packet_features):
     # Extract statistical features from packet data
     stats = extract_statistical_features(packet_features)
     
-    # Create a feature vector
-    feature_vector = [
-        len(packet_features),  # Number of packets
-        stats.get('avg_packet_size', 0),
-        stats.get('min_packet_size', 0),
-        stats.get('max_packet_size', 0),
-        stats.get('std_packet_size', 0),
-        stats.get('unique_src_ips', 0),
-        stats.get('unique_dst_ips', 0),
-        stats.get('unique_src_ports', 0),
-        stats.get('unique_dst_ports', 0),
-        stats.get('potential_scan_ports', 0),
-        int(stats.get('potential_port_scan', False)),
-        int(stats.get('potential_dos', False)),
-        stats.get('protocol_counts', {}).get('TCP', 0),
-        stats.get('protocol_counts', {}).get('UDP', 0),
-        stats.get('protocol_counts', {}).get('ICMP', 0),
-        stats.get('protocol_counts', {}).get('HTTP', 0),
-        stats.get('protocol_counts', {}).get('HTTPS', 0),
-        stats.get('protocol_counts', {}).get('DNS', 0),
-        stats.get('protocol_counts', {}).get('OTHER', 0),
-        # Add additional packet-derived features
-        sum(1 for p in packet_features if p.get('has_payload', False)) / max(1, len(packet_features)),  # Payload ratio
-        sum(p.get('payload_entropy', 0) for p in packet_features) / max(1, len(packet_features)),  # Avg entropy
-        sum(p.get('ttl', 0) for p in packet_features) / max(1, len(packet_features)),  # Avg TTL
-        np.std([p.get('packet_size', 0) for p in packet_features]) if len(packet_features) > 1 else 0  # Packet size std
-    ]
+    # Create a feature vector - using the standard features for prediction
+    feature_vector = create_feature_vector(packet_features, stats, include_extended_features=False)
     
     # Normalize features
     # If we have a trained scaler, use it; otherwise create a new one
@@ -1049,57 +1059,120 @@ def rule_based_detection(packet_features, stats):
         scan_rate = len(ports_set) / max(1, scan_timeframe) if scan_timeframe else 0
         
         # Detect TCP flag patterns for different scan types (NMAP and other scanners)
-        # SYN scan - most common, half-open scan
-        syn_scan = sum(1 for p in packet_features if 
-                      p.get('protocol_name') == 'TCP' and 
-                      p.get('tcp_flags', {}).get('SYN', False) and 
-                      not p.get('tcp_flags', {}).get('ACK', False))
+        def has_tcp_flag(packet, flag_name):
+            if packet.get('protocol_name') != 'TCP':
+                return False
+                
+            # Map flag names to bit positions
+            flag_map = {
+                'SYN': 0x02,
+                'ACK': 0x10,
+                'FIN': 0x01,
+                'RST': 0x04,
+                'PSH': 0x08,
+                'URG': 0x20,
+                'ECE': 0x40,
+                'CWR': 0x80
+            }
+            
+            tcp_flags = packet.get('tcp_flags')
+            
+            # Handle integer flags (newer format)
+            if isinstance(tcp_flags, int):
+                return bool(tcp_flags & flag_map.get(flag_name, 0))
+                
+            # Try explicit flag fields (if they exist)
+            flag_field = f'tcp_flag_{flag_name.lower()}'
+            if flag_field in packet:
+                return packet[flag_field]
+                
+            # Try dictionary-style flags (old format)
+            if isinstance(tcp_flags, dict):
+                return tcp_flags.get(flag_name, False)
+                
+            # Use tcp_flags_str as last resort
+            flags_str = packet.get('tcp_flags_str', '')
+            if flag_name == 'SYN' and 'S' in flags_str:
+                return True
+            if flag_name == 'ACK' and 'A' in flags_str:
+                return True
+            if flag_name == 'FIN' and 'F' in flags_str:
+                return True
+            if flag_name == 'RST' and 'R' in flags_str:
+                return True
+            if flag_name == 'PSH' and 'P' in flags_str:
+                return True
+            if flag_name == 'URG' and 'U' in flags_str:
+                return True
+                
+            return False
         
-        # FIN scan - stealth scan that bypasses some stateless firewalls
-        fin_scan = sum(1 for p in packet_features if 
-                      p.get('protocol_name') == 'TCP' and 
-                      p.get('tcp_flags', {}).get('FIN', False) and 
-                      not p.get('tcp_flags', {}).get('SYN', False) and
-                      not p.get('tcp_flags', {}).get('ACK', False) and
-                      not p.get('tcp_flags', {}).get('RST', False))
+        # Helper function to check for TCP options
+        def has_tcp_options(packet):
+            # Check direct tcp_options field
+            if 'tcp_options' in packet and packet['tcp_options']:
+                return True
+                
+            # Other possible fields where options might be stored
+            return any(packet.get(field) for field in [
+                'tcp_options', 'tcp_options_count', 'tcp_opt_mss', 
+                'tcp_opt_wscale', 'tcp_opt_timestamp'
+            ])
         
-        # NULL scan - stealth scan with no flags set
-        null_scan = sum(1 for p in packet_features if 
-                       p.get('protocol_name') == 'TCP' and 
-                       not any(p.get('tcp_flags', {}).get(flag, False) 
-                              for flag in ['SYN', 'ACK', 'FIN', 'RST', 'PSH', 'URG']))
+        # Now update all TCP flag and option checks
         
-        # XMAS scan - FIN, PSH, URG flags set (lit up like a Christmas tree)
-        xmas_scan = sum(1 for p in packet_features if 
-                       p.get('protocol_name') == 'TCP' and 
-                       p.get('tcp_flags', {}).get('FIN', False) and 
-                       p.get('tcp_flags', {}).get('PSH', False) and 
-                       p.get('tcp_flags', {}).get('URG', False) and
-                       not p.get('tcp_flags', {}).get('SYN', False) and
-                       not p.get('tcp_flags', {}).get('ACK', False))
+        # SYN scan detection
+        syn_scan = sum(1 for p in packet_features if
+                    p.get('protocol_name') == 'TCP' and
+                    has_tcp_flag(p, 'SYN') and
+                    not has_tcp_flag(p, 'ACK'))
+        
+        # FIN scan detection
+        fin_scan = sum(1 for p in packet_features if
+                    p.get('protocol_name') == 'TCP' and
+                    has_tcp_flag(p, 'FIN') and
+                    not has_tcp_flag(p, 'ACK') and
+                    not has_tcp_flag(p, 'RST'))
+        
+        # NULL scan detection
+        null_scan = sum(1 for p in packet_features if
+                    p.get('protocol_name') == 'TCP' and
+                    p.get('tcp_flags', 0) == 0)  # No flags set
+        
+        # XMAS scan detection
+        xmas_scan = sum(1 for p in packet_features if
+                    p.get('protocol_name') == 'TCP' and
+                    has_tcp_flag(p, 'FIN') and
+                    has_tcp_flag(p, 'PSH') and
+                    has_tcp_flag(p, 'URG') and
+                    not has_tcp_flag(p, 'ACK'))
+
+         # The tcp_options check
+        tcp_options_count = sum(1 for p in packet_features if
+                           p.get('protocol_name') == 'TCP' and
+                           has_tcp_options(p))
         
         # ACK scan - used to map firewall rules
-        ack_scan = sum(1 for p in packet_features if 
-                      p.get('protocol_name') == 'TCP' and 
-                      p.get('tcp_flags', {}).get('ACK', False) and 
-                      not p.get('tcp_flags', {}).get('SYN', False) and
-                      not p.get('tcp_flags', {}).get('FIN', False) and
-                      not p.get('tcp_flags', {}).get('RST', False) and
-                      not p.get('tcp_flags', {}).get('PSH', False))
+        ack_scan = sum(1 for p in packet_features if
+              p.get('protocol_name') == 'TCP' and
+              (p.get('tcp_flags', 0) & 0x10) and     # ACK flag is set
+              not (p.get('tcp_flags', 0) & 0x02) and # SYN flag is not set
+              not (p.get('tcp_flags', 0) & 0x04) and # RST flag is not set
+              not (p.get('tcp_flags', 0) & 0x08))    # PSH flag is not set
         
         # Window scan - ACK scan that examines TCP window field for open ports
-        window_scan = sum(1 for p in packet_features if 
-                         p.get('protocol_name') == 'TCP' and 
-                         p.get('tcp_flags', {}).get('ACK', False) and 
-                         not p.get('tcp_flags', {}).get('SYN', False) and
-                         p.get('tcp_window_size', 0) > 0)
+        window_scan = sum(1 for p in packet_features if
+                        p.get('protocol_name') == 'TCP' and
+                        has_tcp_flag(p, 'ACK') and
+                        not has_tcp_flag(p, 'SYN') and
+                        p.get('tcp_window_size', 0) > 0)
         
         # Maimon scan - FIN/ACK flags set
-        maimon_scan = sum(1 for p in packet_features if 
-                         p.get('protocol_name') == 'TCP' and 
-                         p.get('tcp_flags', {}).get('FIN', False) and 
-                         p.get('tcp_flags', {}).get('ACK', False) and
-                         not p.get('tcp_flags', {}).get('SYN', False))
+        maimon_scan = sum(1 for p in packet_features if
+                            p.get('protocol_name') == 'TCP' and
+                            has_tcp_flag(p, 'FIN') and
+                            has_tcp_flag(p, 'ACK') and
+                            not has_tcp_flag(p, 'SYN'))
         
         # UDP scanning detection (empty packets to UDP ports)
         udp_scan = sum(1 for p in packet_features if 
@@ -1673,9 +1746,11 @@ def rule_based_detection(packet_features, stats):
                         if p.get('protocol_name') == 'TCP' and 
                             p.get('tcp_window_size') in [1024, 5840, 8192, 65535]),
         
-        'tcp_options': sum(1 for p in packet_features 
-                            if p.get('protocol_name') == 'TCP' and 
-                            'tcp_options' in p.get('tcp_flags', {})),
+        'tcp_options': sum(1 for p in packet_features
+                  if p.get('protocol_name') == 'TCP' and 
+                  (p.get('tcp_options') is not None or
+                   any(opt_field in p for opt_field in 
+                      ['tcp_opt_mss', 'tcp_opt_wscale', 'tcp_opt_timestamp']))),
         
         'icmp_echo': sum(1 for p in packet_features 
                         if p.get('protocol_name') == 'ICMP' and 
@@ -4082,6 +4157,11 @@ def rule_based_detection(packet_features, stats):
                 'Combined scanning and infection behavior'
             ]
         })
+
+    # ========== WEB PHISHING BEHAVIOR ==========
+    web_phishing_threat = detect_web_phishing(packet_features)
+    if web_phishing_threat:
+        threats.append(web_phishing_threat)
     
     return threats
 

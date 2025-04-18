@@ -632,12 +632,25 @@ def process_csv_for_training(csv_path, category_id):
         db.session.add(training_data)
         db.session.commit()
         
+        # Initialize default return values
+        training_result = {'status': 'error', 'message': 'Model training failed'}
+        detected_threats = []
+        threat_matches = 0
+        
         # Train the model with the new data
         try:
             from ml_model import train_model, rule_based_detection
             
-            # Apply rule-based detection to enhance feature extraction
-            detected_threats = rule_based_detection(packet_features, stats)
+            # Safely apply rule-based detection
+            try:
+                detected_threats = rule_based_detection(packet_features, stats)
+            except Exception as detection_error:
+                logger.error(f"Error in rule-based detection: {detection_error}")
+                detected_threats = []
+            
+            # Ensure detected_threats is a list
+            if not isinstance(detected_threats, list):
+                detected_threats = []
             
             # Create a temporary directory to hold training data
             with tempfile.TemporaryDirectory() as temp_dir:
@@ -658,7 +671,7 @@ def process_csv_for_training(csv_path, category_id):
             # Continue anyway - we've stored the training data
         
         # Get threat match count
-        threat_matches = sum(1 for t in detected_threats if t['name'] == category.name)
+        threat_matches = sum(1 for t in detected_threats if t.get('name', '').lower() == category.name.lower())
         
         return {
             'status': 'success',
@@ -666,7 +679,8 @@ def process_csv_for_training(csv_path, category_id):
             'samples': len(packet_features),
             'training_id': training_data.id,
             'threat_matches': threat_matches,
-            'dataset_stats': stats
+            'dataset_stats': stats,
+            'training_result': training_result
         }
         
     except Exception as e:
