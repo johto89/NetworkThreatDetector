@@ -6,14 +6,15 @@ import time
 import json
 import traceback
 from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, VotingClassifier, AdaBoostClassifier, StackingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
 from web_phishing_detector import detect_web_phishing
 from pcap_processor import extract_statistical_features, process_pcap_file
 from models import ThreatCategoryEnum
 from csv_processor import process_csv_file, csv_to_pcap_features
+from iputils import is_whitelisted_ip, filter_whitelisted_ips
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, VotingClassifier, AdaBoostClassifier, StackingClassifier
 
 # Initialize the model and scaler as global variables
 model = None
@@ -285,7 +286,7 @@ def train_model(input_files, labels, window_size=100, step_size=50):
             # Process the file to get raw packet features
             raw_packet_features = None
             
-            if file_ext == '.pcap':
+            if file_ext == '.pcap' or file_ext == '.pcapng':
                 raw_packet_features = process_pcap_file(input_file)
             elif file_ext == '.csv':
                 # First try to process as CSV directly
@@ -606,9 +607,12 @@ def analyze_packet_features(packet_features):
     threat_scores = {}
     confidence = 0.0
     
-    # Perform rule-based detection
+    # Generate threats using rule-based detection with stats
     rule_based_threats = rule_based_detection(packet_features, stats)
-    threats.extend(rule_based_threats)
+    
+    # Filter threats based on IP reputation
+    filtered_threats = filter_whitelisted_ips(rule_based_threats)
+    threats.extend(filtered_threats)
     
     # If we have a model, use it to enhance the detection
     if model is not None and len(features) > 0:
@@ -2124,7 +2128,7 @@ def rule_based_detection(packet_features, stats):
             elif rep['syn_count'] > 10 and rep['syn_count'] / max(1, rep['packet_count']) > 0.8:
                 suspicious_ips.append(ip)
         
-        # TCP SYN Flood Detection - modified to handle tcp_flags safely
+        # TCP SYN Flood Detection
         syn_count = 0
         ack_count = 0
         
@@ -2135,6 +2139,9 @@ def rule_based_detection(packet_features, stats):
                 # Safe access to SYN and ACK flags
                 has_syn = False
                 has_ack = False
+
+                if is_whitelisted_ip(src_ip) or is_whitelisted_ip(dst_ip):
+                    continue
                 
                 # Handle dictionary-like tcp_flags
                 if hasattr(tcp_flags, '__contains__'):
@@ -4162,6 +4169,18 @@ def rule_based_detection(packet_features, stats):
     web_phishing_threat = detect_web_phishing(packet_features)
     if web_phishing_threat:
         threats.append(web_phishing_threat)
+
+    # ========== ZERO-DAY & APT DETECTION ==========
+    try:
+        # Import the anomaly detection module
+        from anomaly_detection import add_zero_day_apt_detection
+        
+        # Add zero-day and APT detection to rule-based threats
+        threats = add_zero_day_apt_detection(threats, packet_features)
+    except ImportError:
+        logging.warning("Anomaly detection module not available. Zero-day and APT detection disabled.")
+    except Exception as e:
+        logging.error(f"Error in zero-day/APT detection: {e}")
     
     return threats
 
