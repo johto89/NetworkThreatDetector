@@ -13,6 +13,7 @@ from scapy.error import Scapy_Exception
 from scapy.layers.http import HTTP, HTTPRequest, HTTPResponse
 from scapy.layers.tls.all import TLS
 from scapy.utils import PcapReader
+from iputils import is_internal_ip
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -361,7 +362,7 @@ def get_ip_communication_data(packet_features, threat_name=None):
                     'data_received': 0,
                     'targets': set(),
                     'sources': set(),
-                    'is_internal': is_likely_internal_ip(ip),
+                    'is_internal': is_internal_ip(ip),
                     'first_seen': packet.get('timestamp', 0),
                     'last_seen': packet.get('timestamp', 0)
                 }
@@ -1159,36 +1160,7 @@ def extract_statistical_features(packet_features):
     
     return stats
 
-def is_likely_internal_ip(ip):
-    """Check if an IP is likely an internal IP address"""
-    try:
-        # Check RFC 1918 private ranges
-        octets = ip.split('.')
-        if len(octets) != 4:
-            return False
-            
-        # 10.0.0.0/8
-        if octets[0] == '10':
-            return True
-            
-        # 172.16.0.0/12
-        if octets[0] == '172' and 16 <= int(octets[1]) <= 31:
-            return True
-            
-        # 192.168.0.0/16
-        if octets[0] == '192' and octets[1] == '168':
-            return True
-            
-        # Check for other common internal patterns
-        if ip.startswith('169.254.'):  # Link-local
-            return True
-            
-        if ip == '127.0.0.1':  # Localhost
-            return True
-            
-        return False
-    except Exception:
-        return False
+
 
 def debug_pcap_data(analysis):
     """
