@@ -636,29 +636,24 @@ def upload_file():
                     logging.debug(f"Processing ZIP file: {filepath}")
                     analysis_results = process_zip_file(filepath)
                     
-                    # Kiểm tra xem dữ liệu IP đã được bảo toàn chưa
+                     # Verify and log IP data extraction from ZIP
                     logging.info("Checking ZIP processing results for IP data")
                     
-                    # Kiểm tra packet_data
+                    # Extract and validate packet data from traffic summary
                     if 'traffic_summary' in analysis_results and 'packet_data' in analysis_results['traffic_summary']:
                         packet_data = analysis_results['traffic_summary']['packet_data']
                         logging.info(f"Found {len(packet_data)} packets in ZIP results")
                         
-                        # Lấy mẫu IP từ packet_data
+                        # Extract sample IP addresses for logging
                         sample_ips = set()
                         for p in packet_data[:20]:
                             if isinstance(p, dict):
                                 if p.get('src_ip'): sample_ips.add(p.get('src_ip'))
                                 if p.get('dst_ip'): sample_ips.add(p.get('dst_ip'))
-                        
-                        if sample_ips:
-                            logging.info(f"Sample IPs from ZIP packet_data: {list(sample_ips)[:10]}")
-                        else:
-                            logging.warning("No IPs found in ZIP packet_data")
                     else:
                         logging.warning("No packet_data found in ZIP traffic_summary")
                         
-                        # Tạo dữ liệu gói tin đơn giản nếu chúng không tồn tại
+                        # Create simple packet data if it doesn't exist
                         if 'traffic_summary' in analysis_results:
                             if 'all_src_ips' in analysis_results['traffic_summary'] or 'all_dst_ips' in analysis_results['traffic_summary']:
                                 src_ips = analysis_results['traffic_summary'].get('all_src_ips', [])
@@ -668,18 +663,18 @@ def upload_file():
                                     logging.info(f"Creating packet_data from all_src_ips ({len(src_ips)}) and all_dst_ips ({len(dst_ips)})")
                                     packet_data = []
                                     
-                                    # Sử dụng tất cả các IPs nếu một danh sách trống
+                                    # Use all IPs if one list is empty
                                     if not src_ips:
                                         src_ips = dst_ips
                                     if not dst_ips:
                                         dst_ips = src_ips
                                     
-                                    # Tạo sample packet data để hiển thị trực quan
+                                    # Create sample packet data for visualization
                                     for i in range(min(5, len(src_ips))):
                                         src_ip = src_ips[i]
                                         for j in range(min(5, len(dst_ips))):
                                             dst_ip = dst_ips[j]
-                                            if src_ip != dst_ip:  # Tránh self-loops
+                                            if src_ip != dst_ip: 
                                                 packet_data.append({
                                                     'src_ip': src_ip,
                                                     'dst_ip': dst_ip,
@@ -691,13 +686,13 @@ def upload_file():
                                                     'timestamp': time.time()
                                                 })
                                     
-                                    # Thêm packet_data vào kết quả
+                                    # Add packet_data to the results
                                     if not 'traffic_summary' in analysis_results:
                                         analysis_results['traffic_summary'] = {}
                                     analysis_results['traffic_summary']['packet_data'] = packet_data
                                     logging.info(f"Added {len(packet_data)} synthesized packets to traffic_summary")
                                     
-                                    # Lấy IPs mẫu để kiểm tra
+                                    # Extract sample IPs for inspection
                                     sample_ips = set()
                                     for p in packet_data[:10]:
                                         if p.get('src_ip'): sample_ips.add(p.get('src_ip'))
@@ -924,12 +919,10 @@ def upload_file():
                     })
                 }
                 
-                # NEW: Cố gắng giữ lại dữ liệu IP trong phiên làm việc
-                # Lấy dữ liệu IP từ tất cả các nguồn có thể
                 src_ips = []
                 dst_ips = []
                 
-                # Kiểm tra traffic_summary.all_src_ips và traffic_summary.all_dst_ips (định dạng ZIP)
+                # Check traffic_summary.all_src_ips and traffic_summary.all_dst_ips (ZIP format)
                 if 'traffic_summary' in analysis_results:
                     ts = analysis_results['traffic_summary']
                     if isinstance(ts, dict):
@@ -938,7 +931,7 @@ def upload_file():
                         if 'all_dst_ips' in ts and isinstance(ts['all_dst_ips'], list):
                             dst_ips.extend(ts['all_dst_ips'])
                             
-                # Nếu có IPs, tạo packet_data đơn giản để hiển thị
+                # If IPs exist, create simple packet_data for visualization
                 if src_ips or dst_ips:
                     packet_data = []
                     if not src_ips:
