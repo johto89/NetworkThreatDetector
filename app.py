@@ -838,6 +838,9 @@ def upload_file():
                     return obj.tolist()
                 elif type(obj).__name__ == 'EDecimal' or type(obj).__name__ == 'Decimal':
                     return float(obj)  # Convert Decimal to float
+                elif hasattr(obj, '__class__') and obj.__class__.__name__ == 'FlagValue':
+                    # Convert FlagValue to its string representation or a primitive type
+                    return str(obj)
                 else:
                     return obj
                     
@@ -909,16 +912,16 @@ def upload_file():
                 
                 # Create a simplified version that will serialize properly
                 simplified_results = {
-                    'filename': analysis_results.get('filename', original_filename),
-                    'summary': analysis_results.get('summary', {'status': 'partial', 'message': 'Data serialization issues'}),
-                    'threats': analysis_results.get('threats', []),
-                    'traffic_summary': {
+                    'filename': fix_decimal_and_non_serializable_types(analysis_results.get('filename', original_filename)),
+                    'summary': fix_decimal_and_non_serializable_types(analysis_results.get('summary', {'status': 'partial', 'message': 'Data serialization issues'})),
+                    'threats': fix_decimal_and_non_serializable_types(analysis_results.get('threats', [])),
+                    'traffic_summary': fix_decimal_and_non_serializable_types({
                         'total_packets': analysis_results.get('traffic_summary', {}).get('total_packets', 0),
                         'protocols': analysis_results.get('traffic_summary', {}).get('protocols', {}),
                         'unique_src_ips': analysis_results.get('traffic_summary', {}).get('unique_src_ips', 0),
                         'unique_dst_ips': analysis_results.get('traffic_summary', {}).get('unique_dst_ips', 0),
                         'error': 'Some data removed due to serialization issues'
-                    }
+                    })
                 }
                 
                 # NEW: Cố gắng giữ lại dữ liệu IP trong phiên làm việc
