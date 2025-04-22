@@ -20,9 +20,10 @@ import hashlib
 import json
 import tempfile
 from datetime import datetime
-from models import ThreatCategory, TrainingData, db, ThreatCategoryEnum
 import traceback
-from pcap_processor import extract_statistical_features, is_likely_internal_ip
+from iputils import is_internal_ip
+from pcap_processor import extract_statistical_features
+from models import ThreatCategory, TrainingData, db, ThreatCategoryEnum
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -1033,10 +1034,10 @@ def enrich_features_with_geo_info(packet_features):
         
         for feature in packet_features:
             if 'src_ip' in feature:
-                feature['src_ip_internal'] = is_likely_internal_ip(feature['src_ip'])
+                feature['src_ip_internal'] = is_internal_ip(feature['src_ip'])
             
             if 'dst_ip' in feature:
-                feature['dst_ip_internal'] = is_likely_internal_ip(feature['dst_ip'])
+                feature['dst_ip_internal'] = is_internal_ip(feature['dst_ip'])
             
             # Add direction based on internal/external classification
             if 'src_ip_internal' in feature and 'dst_ip_internal' in feature:

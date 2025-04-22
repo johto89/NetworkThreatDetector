@@ -4174,8 +4174,7 @@ def rule_based_detection(packet_features, stats):
     try:
         # Import the anomaly detection module
         from anomaly_detection import add_zero_day_apt_detection
-        
-        # Add zero-day and APT detection to rule-based threats
+
         threats = add_zero_day_apt_detection(threats, packet_features)
     except ImportError:
         logging.warning("Anomaly detection module not available. Zero-day and APT detection disabled.")
