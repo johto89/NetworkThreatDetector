@@ -4,6 +4,36 @@ from models import ThreatCategoryEnum
 from iputils import is_whitelisted_ip
 from web_phishing_detector import detect_web_phishing
 
+def check_tcp_flag(tcp_flags, flag_name):
+    """
+    Safely check TCP flags regardless of how they're represented (dictionary, object attributes, etc.)
+    
+    Args:
+        tcp_flags: TCP flags object/dictionary from packet features
+        flag_name: Name of the flag to check (e.g., 'SYN', 'ACK', 'FIN')
+        
+    Returns:
+        Boolean indicating if the flag is set
+    """
+    try:
+        # Dictionary-like access
+        if hasattr(tcp_flags, '__contains__'):
+            if flag_name in tcp_flags:
+                flag_value = tcp_flags[flag_name]
+                return bool(flag_value) if hasattr(flag_value, '__bool__') else bool(flag_value)
+        
+        # Object with attributes
+        if hasattr(tcp_flags, flag_name):
+            return bool(getattr(tcp_flags, flag_name, False))
+        
+        # String representation fallback
+        if isinstance(tcp_flags, str):
+            return flag_name.upper() in tcp_flags.upper()
+        
+        return False
+    except Exception:
+        return False
+
 def rule_based_detection(packet_features, stats):
     """
     Main entry point for rule-based threat detection.
@@ -351,6 +381,97 @@ def detect_reconnaissance(packet_features, stats):
                 f"Reconnaissance patterns: {ad_patterns}"
             ]
         ))
+
+    # 5. Scan Tool Detection (actual tool signatures in packet payloads)
+    scan_tool_patterns = [
+        # Actual scan tool signatures and binary patterns
+        'nmap', 'masscan', 'zmap', 'unicornscan', 'scanline',
+        'advanced port scanner', 'angry ip scanner', 'nessus',
+        'openvas', 'nexpose', 'nikto', 'syn scan', 'fin scan', 
+        'null scan', 'xmas scan', 'connect scan', 'ack scan',
+        'os fingerprint', 'version detection', 'script scan',
+        'traceroute', 'whois', 'dig', 'nslookup', 'port scan'
+    ]
+    
+    scan_pattern_count = 0
+    scan_pattern_examples = []
+    
+    for packet in packet_features:
+        payload = packet.get('payload_str', '').lower()
+        if not payload:
+            continue
+            
+        for pattern in scan_tool_patterns:
+            if pattern in payload:
+                scan_pattern_count += 1
+                if len(scan_pattern_examples) < 3:
+                    scan_pattern_examples.append(pattern)
+    
+    # Check for SYN-only packets which are common in port scans
+    syn_only_count = 0
+    for packet in packet_features:
+        if packet.get('protocol_name') == 'TCP':
+            tcp_flags = packet.get('tcp_flags', {})
+            if (check_tcp_flag(tcp_flags, 'SYN') and 
+                not check_tcp_flag(tcp_flags, 'ACK') and
+                not check_tcp_flag(tcp_flags, 'FIN') and
+                not check_tcp_flag(tcp_flags, 'RST')):
+                syn_only_count += 1
+    
+    if scan_pattern_count > 0 or syn_only_count > 15:
+        # Combine with existing detection logic
+        additional_indicators = []
+        if scan_pattern_examples:
+            additional_indicators.append(f"Scan tool signatures: {', '.join(scan_pattern_examples)}")
+        if syn_only_count > 15:
+            additional_indicators.append(f"SYN-only packets: {syn_only_count} (indicative of SYN scanning)")
+        
+        threats.append(create_threat(
+            ThreatCategoryEnum.RECONNAISSANCE,
+            min(0.85 + (scan_pattern_count * 0.02), 0.95),
+            "Network scanning tools or techniques detected.",
+            additional_indicators + ["Explicit scanner signatures or scanning techniques identified in packet data"]
+        ))
+    
+    # 6. Web Application Reconnaissance
+    web_recon_patterns = [
+        # Web application scanning patterns
+        'dirbuster', 'dirb ', 'gobuster', 'wfuzz', 'burpsuite',
+        'zap', 'sqlmap', 'nikto', 'acunetix', 'whatweb',
+        'wafw00f', 'wpscan', 'joomscan', 'droopescan',
+        # Common web recon techniques
+        '/.git/', '/wp-admin/', '/wp-content/', '/administrator/',
+        '/joomla/', '/backup/', '/config/', '/admin/', '/login/',
+        '/test/', '/dev/', '/debug/', '/api/', '/.env',
+        '/.htaccess', '/robots.txt', '/sitemap.xml'
+    ]
+    
+    web_recon_count = 0
+    web_recon_examples = []
+    web_packets = [p for p in packet_features if p.get('dst_port') in [80, 443, 8080, 8443]]
+    
+    for packet in web_packets:
+        payload = packet.get('payload_str', '').lower()
+        if not payload:
+            continue
+            
+        for pattern in web_recon_patterns:
+            if pattern in payload:
+                web_recon_count += 1
+                if len(web_recon_examples) < 3:
+                    web_recon_examples.append(pattern)
+    
+    if web_recon_count > 3:
+        threats.append(create_threat(
+            ThreatCategoryEnum.RECONNAISSANCE,
+            min(0.75 + (web_recon_count * 0.02), 0.9),
+            "Web application reconnaissance detected.",
+            [
+                f"Web recon indicators: {web_recon_count}",
+                f"Examples: {', '.join(web_recon_examples)}" if web_recon_examples else "",
+                "Possible web application mapping or vulnerability scanning"
+            ]
+        ))
     
     return threats
 
@@ -366,27 +487,6 @@ def detect_dos_ddos(packet_features, stats):
         List of detected DoS/DDoS threats
     """
     threats = []
-    
-    # Robust helper function for checking TCP flags
-    def check_tcp_flag(tcp_flags, flag_name):
-        try:
-            # Dictionary-like access
-            if hasattr(tcp_flags, '__contains__'):
-                if flag_name in tcp_flags:
-                    flag_value = tcp_flags[flag_name]
-                    return bool(flag_value) if hasattr(flag_value, '__bool__') else bool(flag_value)
-            
-            # Object with attributes
-            if hasattr(tcp_flags, flag_name):
-                return bool(getattr(tcp_flags, flag_name, False))
-            
-            # String representation fallback
-            if isinstance(tcp_flags, str):
-                return flag_name.upper() in tcp_flags.upper()
-            
-            return False
-        except Exception:
-            return False
     
     # Packet and timeframe analysis
     timestamps = sorted([p.get('timestamp', 0) for p in packet_features if p.get('timestamp')])
@@ -646,23 +746,6 @@ def detect_protocol_attacks(packet_features, stats):
         List of detected network protocol attack threats
     """
     threats = []
-    
-    # Helper function to safely check TCP flags
-    def check_tcp_flag(tcp_flags, flag_name):
-        try:
-            # Dictionary-like access
-            if hasattr(tcp_flags, '__contains__'):
-                if flag_name in tcp_flags:
-                    flag_value = tcp_flags[flag_name]
-                    return bool(flag_value) if hasattr(flag_value, '__bool__') else bool(flag_value)
-            
-            # Object with attributes
-            if hasattr(tcp_flags, flag_name):
-                return bool(getattr(tcp_flags, flag_name, False))
-            
-            return False
-        except Exception:
-            return False
     
     # 1. IP Spoofing Detection
     private_ip_from_public = False
@@ -1249,55 +1332,121 @@ def detect_server_attacks(packet_features, stats):
         445: "SMB/CIFS", 8080: "HTTP Alternate"
     }
 
-    # Authentication failure patterns
+    # Authentication failure patterns (real strings found in packets)
     auth_failure_patterns = [
-        'failed', 'invalid', 'incorrect', 'denied', 'authentication failed',
-        'login failed', 'bad password', 'access denied', 'auth failed',
-        'unauthorized', 'wrong password', 'failed to authenticate', 
-        'invalid credentials', 'failure', 'rejected', 'not allowed', 
-        'permission denied'
+        'authentication failed', 'login failed', 'failed password',
+        'invalid password', 'incorrect password', 'wrong password',
+        'access denied', 'permission denied', 'auth failed',
+        'failed login', 'login incorrect', '530 login', # FTP error code
+        '401 unauthorized', '403 forbidden',  # HTTP error codes
+        'authentication error', 'credentials rejected'
     ]
 
-    # Lateral movement detection patterns
+    # Lateral movement commands (actual commands found in packet data)
     lateral_movement_patterns = [
-        'psexec', 'wmic', 'winrm', 'powershell remoting', 'wmi', 
-        'task scheduler', 'sc \\\\', 'net use', 'net view', 
-        'admin$', 'ipc$', 'c$', 'pass-the-hash', 'pth', 
-        'mimikatz', 'sekurlsa::logonpasswords', 'kerberos', 
-        'kerberoast', 'golden ticket', 'silver ticket',
-        'dcsync', 'smbexec', 'wmiexec', 'atexec'
+        'psexec', 'psexec.exe', 'wmic.exe', 'wmic process call create',
+        'sc \\\\ ', 'sc.exe \\\\ ', 'at \\\\ ', 'schtasks /create /s',
+        'net use \\\\ ', 'net.exe use \\\\ ', 'cmd.exe /c', 'powershell -e',
+        'invoke-command', 'enter-pssession', 'winrm', 'wsman',
+        '\\\\admin$', '\\\\c$', '\\\\ipc$', 'impacket-'
     ]
 
-    # Privilege Escalation Patterns
+    # Privilege Escalation Commands (actual commands found in packets)
     priv_escalation_patterns = {
         'basic': [
-            'SUDO', 'SU -', 'CHMOD 777', 'SETUID', 'PRIV=', 
-            'ADMINISTRATOR', 'ROOT', 'RUNAS', 'NET USER /ADD', 
-            'USERGROUPS', 'GPASSWD'
+            'sudo ', 'su -', 'sudo -i', 'chmod 777', 'chmod +s',
+            'net user /add', 'net localgroup administrators /add',
+            'runas /user:administrator', 'pkexec', 'doas',
+            'usermod -G', 'usermod -aG sudo', 'usermod -aG wheel'
         ],
         'advanced': [
-            # Unix/Linux specific
-            'USERMOD -G', 'WHEEL', 'SUDOERS', 'CHOWN', 'CHMOD +S', 
-            'CAPABILITIES', 'SETCAP', 'SELINUX', 'APPARMOR',
-            'SUID', 'SGID', 'VISUDO', 'POLICYKIT', 'DOAS',
+            # Unix/Linux commands
+            'kernel-exploit', 'dirty_sock', 'overlayfs', 'libseccomp',
+            'setcap cap_setuid', 'setcap cap_sys_admin', '/etc/sudoers.d',
+            'visudo', '/etc/sudoers', 'polkit', 'dbus-send',
             
-            # Windows specific
-            'NT AUTHORITY\\SYSTEM', 'DCOM', 'MSCONFIGURATION',
-            'TOKENMANIPULATION', 'SECLOGON', 'UAC BYPASS', 
-            'EVENTVWR', 'FODHELPER', 'COMPUTERDEFAULTS', 
-            'SDCLT', 'WSRESET',
-            
-            # Generic/cross-platform
-            'KERNEL EXPLOIT', 'CVE-', 'EXPLOIT', 'PRIVILEGE',
-            'SETPROCESS', 'BYPASSUAC', 'PROCESSHACKER',
-            'IMPERSONATION', 'DELEGATION', 'HOTPOTATO'
+            # Windows commands
+            'whoami /priv', 'net.exe user', 'reg.exe add hklm\\sam',
+            'reg add hkcu\\software\\microsoft\\windows\\currentversion\\run',
+            'bcdedit.exe /set', 'fodhelper.exe', 'eventvwr.exe',
+            'computerdefaults.exe', 'sdclt.exe', 'sdbinst.exe'
         ],
         'container_escape': [
-            'MOUNT /PROC', 'DOCKER.SOCK', 'PRIVILEGED CONTAINER',
-            'CAP_SYS_ADMIN', 'CGROUP', 'NSENTER', 'DEVICE MOUNT',
-            'CVE-2019-5736', 'RUNSC', 'KUBERNETES'
+            '/proc/self/mountinfo', '/proc/self/cgroup', 'docker.sock',
+            '/var/run/docker.sock', 'unix:///var/run/docker.sock',
+            'privileged=true', 'cap_sys_admin', '/.dockerenv',
+            'ctr -n', '/var/run/crio/crio.sock', '/run/containerd/'
         ]
     }
+    
+    # Windows-specific attack commands/artifacts (actual strings in packets)
+    windows_attack_patterns = [
+        # Process/service manipulation actual commands
+        'sc.exe start', 'sc.exe config', 'sc.exe create',
+        'taskkill /f /im', 'tasklist /v', 'regsvr32', 'regsvr32 /s /u',
+        
+        # Admin shares access
+        '\\\\target\\admin$', '\\\\target\\c$', '\\\\target\\ipc$',
+        'net view \\\\', 'net use * \\\\', 'copy \\\\ ',
+        
+        # Registry commands
+        'reg query', 'reg add', 'reg delete', 'regedit /s',
+        'hklm\\sam', 'hklm\\security', 'hklm\\system\\currentcontrolset',
+        'hkcu\\software\\microsoft\\windows\\currentversion\\run',
+        
+        # Scheduled tasks
+        'schtasks /create', 'schtasks /run', 'at \\\\',
+        'wmic /node:', 'wmic process call', 'wmic os get',
+        
+        # Event log manipulation
+        'wevtutil cl', 'clear-eventlog', 'wevtutil.exe'
+    ]
+    
+    # Linux-specific attack commands (actual commands in packets)
+    linux_attack_patterns = [
+        # File access
+        'cat /etc/shadow', 'cat /etc/passwd', 'cat /etc/group',
+        'cat /var/log/', 'less /var/log/', 'tail -f /var/log/',
+        
+        # Process manipulation
+        'ps -aux', 'ps -ef', 'top -n', 'kill -9', 'pkill -f',
+        'nohup ', '& disown', 'exec > /dev/null',
+        
+        # System commands 
+        'echo "" > /var/log/', 'rm -f /var/log/', 'touch -r',
+        'chattr +i', 'mount --bind', 'mount -o remount',
+        'insmod ', 'modprobe ', 'lsmod | grep',
+        'ld_preload', 'ld_library_path', 'strace -p',
+        'ptrace ', 'chmod u+s', 'chmod g+s',
+        
+        # Persistence mechanisms
+        '/etc/crontab', '/etc/cron.d', '/var/spool/cron',
+        '/etc/init.d/', '/etc/systemd/', 'systemctl enable',
+        '.bashrc', '.bash_profile', '.profile'
+    ]
+    
+    # Active Directory attack artifacts (actual strings in packets)
+    active_directory_attack_patterns = [
+        # Kerberos ticket manipulation 
+        'asktgt', 'kerberoast', '.kirbi', 'ticket.bin',
+        'rc4-hmac', 'krbtgt/', 'setspn -T', 'setspn -A',
+        '-request_id', 'ccache', '.ccache', 
+        
+        # LDAP queries
+        'ldapsearch -x', 'ldapsearch -h', 'ldap://', 'ldaps://',
+        'ldapadd ', 'ldapmodify ', '(objectClass=*)',
+        'userAccountControl:', 'sAMAccountName', 'objectSid',
+        
+        # AD enumeration
+        'net group "domain admins"', 'net user /domain',
+        'dsquery * -limit', 'adfind -f', 'nltest /dclist',
+        'net view /domain', 'net view /domain:',
+        
+        # DCSync/replication
+        'lsadump::dcsync', 'drsuapi', 'DsGetNCChanges',
+        'ntdsutil', 'ntds.dit', 'vssadmin create shadow',
+        'IDirectoryReplication'
+    ]
 
     # Analyze packets
     for packet in packet_features:
@@ -1323,7 +1472,9 @@ def detect_server_attacks(packet_features, stats):
         # Check for authentication failures and lateral movement
         for packet in packet_features:
             payload = packet.get('payload_str', '').lower()
-            
+            if not payload:
+                continue
+                
             # Count authentication failures
             if any(term in payload for term in auth_failure_patterns):
                 auth_failures += 1
@@ -1365,12 +1516,14 @@ def detect_server_attacks(packet_features, stats):
     container_escape_count = 0
 
     for packet in packet_features:
-        payload = packet.get('payload_str', '').upper()
-        
+        payload = packet.get('payload_str', '').lower()
+        if not payload:
+            continue
+            
         # Check for privilege escalation patterns
         priv_basic_count += sum(1 for pattern in priv_escalation_patterns['basic'] if pattern in payload)
         priv_advanced_count += sum(1 for pattern in priv_escalation_patterns['advanced'] if pattern in payload)
-        lateral_move_count += sum(1 for pattern in lateral_movement_patterns if pattern in payload.lower())
+        lateral_move_count += sum(1 for pattern in lateral_movement_patterns if pattern in payload)
         container_escape_count += sum(1 for pattern in priv_escalation_patterns['container_escape'] if pattern in payload)
 
     # Calculate privilege escalation score
@@ -1409,39 +1562,595 @@ def detect_server_attacks(packet_features, stats):
             [ind for ind in indicators if ind]
         ))
 
-    # Existing detection methods for other server attacks
-    # SSH, FTP, RDP brute force detection
+    # Specific service brute force detection - SSH, FTP, RDP
     ssh_packets = [p for p in packet_features if p.get('dst_port') == 22]
     ftp_packets = [p for p in packet_features if p.get('dst_port') == 21]
     rdp_packets = [p for p in packet_features if p.get('dst_port') == 3389]
     
-    # Existing brute force checks for specific services
+    # SSH brute force detection (actual packet patterns)
     if len(ssh_packets) > 15:
-        ssh_auth_packets = [p for p in ssh_packets if p.get('packet_size', 0) < 300]
-        if len(ssh_auth_packets) > 10:
+        ssh_auth_patterns = ['ssh2_msg_userauth_failure', 'no matching cipher', 'invalid user', 
+                            'failed password', 'authentication failed', 'connection closed']
+        
+        ssh_auth_failures = 0
+        for packet in ssh_packets:
+            payload = packet.get('payload_str', '').lower()
+            if payload and any(pattern in payload for pattern in ssh_auth_patterns):
+                ssh_auth_failures += 1
+                
+        if ssh_auth_failures > 5 or len(ssh_packets) > 30:
             threats.append(create_threat(
                 ThreatCategoryEnum.SERVER_ATTACKS,
                 0.8,
                 "Potential SSH brute force attack detected.",
-                [f"{len(ssh_auth_packets)} rapid SSH authentication attempts", "Multiple small SSH packets"]
+                [f"{ssh_auth_failures} SSH authentication failures detected", 
+                 f"{len(ssh_packets)} SSH connection attempts"]
             ))
     
+    # FTP brute force detection (actual FTP response codes)
     if len(ftp_packets) > 15:
+        ftp_auth_failures = 0
+        for packet in ftp_packets:
+            payload = packet.get('payload_str', '').lower()
+            if payload and ('530 ' in payload or '430 ' in payload or '331 ' in payload or 'login incorrect' in payload):
+                ftp_auth_failures += 1
+                
+        if ftp_auth_failures > 5:
+            threats.append(create_threat(
+                ThreatCategoryEnum.SERVER_ATTACKS,
+                0.75,
+                "Potential FTP brute force attack detected.",
+                [f"{ftp_auth_failures} FTP authentication failures", 
+                 f"{len(ftp_packets)} FTP connection attempts"]
+            ))
+    
+    # RDP brute force detection (looking for high connection volume and small packet sizes)
+    if len(rdp_packets) > 20:
+        rdp_conn_init = sum(1 for p in rdp_packets if 
+                         p.get('payload_str', '') and 
+                        ('rdp negotiation' in p.get('payload_str', '').lower() or 
+                         'mstshash' in p.get('payload_str', '').lower() or
+                         'cookie: mstshash=' in p.get('payload_str', '').lower()))
+        
+        if rdp_conn_init > 8:
+            threats.append(create_threat(
+                ThreatCategoryEnum.SERVER_ATTACKS,
+                0.7,
+                "Potential RDP brute force attack detected.",
+                [f"{rdp_conn_init} RDP connection initializations detected", 
+                 f"{len(rdp_packets)} RDP packets observed"]
+            ))
+    
+    # Windows-specific Attacks Detection (actual commands in packets)
+    windows_attack_count = 0
+    windows_attack_examples = []
+    
+    for packet in packet_features:
+        payload = packet.get('payload_str', '').lower()
+        if not payload:
+            continue
+            
+        for pattern in windows_attack_patterns:
+            if pattern.lower() in payload:
+                windows_attack_count += 1
+                if len(windows_attack_examples) < 3:  # Collect up to 3 examples
+                    windows_attack_examples.append(pattern)
+    
+    if windows_attack_count > 2:
+        confidence = min(0.6 + (windows_attack_count * 0.05), 0.95)
         threats.append(create_threat(
             ThreatCategoryEnum.SERVER_ATTACKS,
-            0.75,
-            "Potential FTP brute force attack detected.",
-            [f"{len(ftp_packets)} FTP connection attempts", "High volume of FTP traffic"]
+            confidence,
+            "Potential Windows-specific server attack detected.",
+            [f"{windows_attack_count} Windows attack indicators detected", 
+             f"Examples: {', '.join(windows_attack_examples)}" if windows_attack_examples else "",
+             "Attempts to manipulate Windows system components or services"]
         ))
     
-    if len(rdp_packets) > 20:
+    # Linux-specific attacks (actual commands in packets)
+    linux_attack_count = 0
+    linux_attack_examples = []
+    
+    for packet in packet_features:
+        payload = packet.get('payload_str', '').lower()
+        if not payload:
+            continue
+            
+        for pattern in linux_attack_patterns:
+            if pattern.lower() in payload:
+                linux_attack_count += 1
+                if len(linux_attack_examples) < 3:  # Collect up to 3 examples
+                    linux_attack_examples.append(pattern)
+    
+    if linux_attack_count > 2:
+        confidence = min(0.6 + (linux_attack_count * 0.05), 0.95)
         threats.append(create_threat(
             ThreatCategoryEnum.SERVER_ATTACKS,
-            0.7,
-            "Potential RDP brute force attack detected.",
-            [f"{len(rdp_packets)} RDP connection attempts", "High volume of RDP traffic"]
+            confidence,
+            "Potential Linux-specific server attack detected.",
+            [f"{linux_attack_count} Linux attack indicators detected", 
+             f"Examples: {', '.join(linux_attack_examples)}" if linux_attack_examples else "",
+             "Attempts to exploit Linux system components or services"]
         ))
-
+    
+    # Active Directory Attacks Detection (actual commands/artifacts in packets)
+    ad_attack_count = 0
+    ad_attack_examples = []
+    
+    for packet in packet_features:
+        payload = packet.get('payload_str', '').lower()
+        if not payload:
+            continue
+            
+        for pattern in active_directory_attack_patterns:
+            if pattern.lower() in payload:
+                ad_attack_count += 1
+                if len(ad_attack_examples) < 3:
+                    ad_attack_examples.append(pattern)
+    
+    if ad_attack_count > 1:
+        confidence = min(0.65 + (ad_attack_count * 0.05), 0.95)
+        threats.append(create_threat(
+            ThreatCategoryEnum.SERVER_ATTACKS,
+            confidence,
+            "Potential Active Directory attack detected.",
+            [f"{ad_attack_count} Active Directory attack indicators identified", 
+             f"Examples: {', '.join(ad_attack_examples)}" if ad_attack_examples else "",
+             "Possible attempt to compromise domain controllers or AD services"]
+        ))
+    
+    # LDAP Injection Detection (actual injection payloads)
+    ldap_ports = [389, 636, 3268, 3269]  # Standard LDAP, LDAPS, Global Catalog, Global Catalog over SSL
+    ldap_packets = [p for p in packet_features if p.get('dst_port') in ldap_ports]
+    
+    if ldap_packets:
+        ldap_injection_patterns = [
+            '*)(*&', '*))%00', '|(objectClass=*)', '&(objectClass=*)', 
+            '*()|%26', '*()|&', '*)(uid=*))(|(uid=*', 
+            '*))(|(objectclass=*', '*)(uid=*))(|(uid=*',
+            '*))(|(password=*', 'cn=*)(|(cn=*', '*)*'
+        ]
+        
+        ldap_injection_count = 0
+        ldap_injection_examples = []
+        
+        for packet in ldap_packets:
+            payload = packet.get('payload_str', '').lower()
+            if not payload:
+                continue
+                
+            for pattern in ldap_injection_patterns:
+                if pattern.lower() in payload:
+                    ldap_injection_count += 1
+                    if len(ldap_injection_examples) < 3:
+                        ldap_injection_examples.append(pattern)
+        
+        if ldap_injection_count > 2:
+            confidence = min(0.6 + (ldap_injection_count * 0.05), 0.9)
+            threats.append(create_threat(
+                ThreatCategoryEnum.SERVER_ATTACKS,
+                confidence,
+                "Potential LDAP injection attack detected.",
+                [f"{ldap_injection_count} LDAP injection indicators identified", 
+                 f"Examples: {', '.join(ldap_injection_examples)}" if ldap_injection_examples else "",
+                 "Attempt to manipulate directory services queries"]
+            ))
+    
+    # SMB/CIFS Protocol Attack Detection (actual protocol artifacts)
+    smb_packets = [p for p in packet_features if p.get('dst_port') in [445, 139, 137, 138]]
+    
+    if len(smb_packets) > 10:
+        smb_attack_patterns = [
+            '\\\\ipc$', '\\\\admin$', '\\\\c$', 
+            'srvsvc', 'samr', 'lsarpc', 'netlogon',
+            'svcctl', 'spoolss', 'browser',
+            'trans2', 'transact', 'negotiate protocol',
+            'session setup', 'tree connect', 'net view'
+        ]
+        
+        smb_attack_count = 0
+        smb_attack_examples = []
+        
+        for packet in smb_packets:
+            payload = packet.get('payload_str', '').lower()
+            if not payload:
+                continue
+                
+            for pattern in smb_attack_patterns:
+                if pattern in payload:
+                    smb_attack_count += 1
+                    if len(smb_attack_examples) < 3:
+                        smb_attack_examples.append(pattern)
+        
+        if smb_attack_count > 5:
+            confidence = min(0.65 + (smb_attack_count * 0.03), 0.9)
+            threats.append(create_threat(
+                ThreatCategoryEnum.SERVER_ATTACKS,
+                confidence,
+                "Potential SMB/CIFS protocol attack detected.",
+                [f"{smb_attack_count} SMB/CIFS attack indicators identified", 
+                 f"Examples: {', '.join(smb_attack_examples)}" if smb_attack_examples else "",
+                 f"{len(smb_packets)} SMB/CIFS packets analyzed",
+                 "Possible attempt to exploit file sharing services"]
+            ))
+    
+    # RPC/DCOM Attack Detection (actual protocol artifacts)
+    rpc_packets = [p for p in packet_features if p.get('dst_port') in [135, 593]]
+    
+    if rpc_packets:
+        rpc_attack_patterns = [
+            'iactivation', 'iremotescmactivator', 'isystemactivator',
+            'dcom_ntlm', 'oxid', 'iremoteactivation',
+            'iobject_exporter', 'iwbemservices', 'clsid:',
+            'imethodsink', 'oleautomation', 'idispatch',
+            'object_uuid:', '{00000000-0000-0000-0000-000000000000}',
+            'ncacn_ip_tcp'
+        ]
+        
+        rpc_attack_count = 0
+        rpc_attack_examples = []
+        
+        for packet in rpc_packets:
+            payload = packet.get('payload_str', '').lower()
+            if not payload:
+                continue
+                
+            for pattern in rpc_attack_patterns:
+                if pattern in payload:
+                    rpc_attack_count += 1
+                    if len(rpc_attack_examples) < 3:
+                        rpc_attack_examples.append(pattern)
+        
+        if rpc_attack_count > 3:
+            confidence = min(0.6 + (rpc_attack_count * 0.04), 0.9)
+            threats.append(create_threat(
+                ThreatCategoryEnum.SERVER_ATTACKS,
+                confidence,
+                "Potential RPC/DCOM attack detected.",
+                [f"{rpc_attack_count} RPC/DCOM attack indicators identified", 
+                 f"Examples: {', '.join(rpc_attack_examples)}" if rpc_attack_examples else "", 
+                 f"{len(rpc_packets)} RPC/DCOM packets analyzed",
+                 "Possible attempt to exploit remote procedure calls"]
+            ))
+    
+    # Memory-based Exploitation Detection (actual signatures found in memory attacks)
+    memory_exploit_patterns = [
+        # Actual signatures of memory attacks
+        '%u9090%u6858%ucbd3', 'shellcode',  # Common shellcode patterns
+        '\x90\x90\x90\x90', # NOP sleds
+        '\x41\x41\x41\x41', '\x42\x42\x42\x42', # AAAA/BBBB buffer overflow
+        'heap spray', 'format string', 'ret2lib', 'ret2libc', 
+        'vtable hook', 'free()', 'malloc()', 'double free', 
+        'use after free', 'stack overflow', 'rop chain',
+        'jmp esp', 'call esp', 'pop pop ret'
+    ]
+    
+    memory_exploit_count = 0
+    memory_exploit_examples = []
+    
+    for packet in packet_features:
+        payload = packet.get('payload_str', '').lower()
+        if not payload:
+            continue
+            
+        for pattern in memory_exploit_patterns:
+            if pattern.lower() in payload:
+                memory_exploit_count += 1
+                if len(memory_exploit_examples) < 3:
+                    memory_exploit_examples.append(pattern)
+    
+    if memory_exploit_count > 1:
+        confidence = min(0.7 + (memory_exploit_count * 0.05), 0.95)
+        threats.append(create_threat(
+            ThreatCategoryEnum.SERVER_ATTACKS,
+            confidence,
+            "Potential memory-based exploitation attempt detected.",
+            [f"{memory_exploit_count} memory exploitation indicators identified", 
+             f"Examples: {', '.join(memory_exploit_examples)}" if memory_exploit_examples else "",
+             "Possible attempt to exploit memory management vulnerabilities"]
+        ))
+    
+    # Kerberos Attack Detection (actual Kerberos packet artifacts)
+    kerberos_packets = [p for p in packet_features if p.get('dst_port') in [88, 464]]
+    
+    if kerberos_packets:
+        kerberos_attack_patterns = [
+            'krb5kdc_err', 'tgt-req', 'tgs-req', 'krbtgt', 'rc4-hmac',
+            'checksum field', 'ticket_granting_service', 'kinit',
+            'pre-auth', 'preauth', 'apreq', 'authenticator',
+            'kerberos spoof', 'asreq', 'AS-REQ', 'TGS-REQ',
+            'ticket=', 'ticket.kirbi', 'ticket.ccache',
+            'delegation=', 's4u2self', 's4u2proxy'
+        ]
+        
+        kerberos_attack_count = 0
+        kerberos_attack_examples = []
+        
+        for packet in kerberos_packets:
+            payload = packet.get('payload_str', '').lower()
+            if not payload:
+                continue
+                
+            for pattern in kerberos_attack_patterns:
+                if pattern.lower() in payload:
+                    kerberos_attack_count += 1
+                    if len(kerberos_attack_examples) < 3:
+                        kerberos_attack_examples.append(pattern)
+        
+        # Check for abnormal Kerberos traffic patterns (packets with unusual sizes)
+        unusual_sizes = [p for p in kerberos_packets if p.get('packet_size', 0) > 1500]  
+        
+        if kerberos_attack_count > 2 or len(unusual_sizes) > 3:
+            confidence = min(0.65 + (kerberos_attack_count * 0.05) + (len(unusual_sizes) * 0.03), 0.95)
+            
+            indicators = [
+                f"{kerberos_attack_count} Kerberos attack indicators identified" if kerberos_attack_count > 0 else "",
+                f"Examples: {', '.join(kerberos_attack_examples)}" if kerberos_attack_examples else "",
+                f"{len(unusual_sizes)} unusually large Kerberos packets detected" if len(unusual_sizes) > 0 else "",
+                f"{len(kerberos_packets)} Kerberos packets analyzed",
+                "Possible Kerberos ticket manipulation or abuse"
+            ]
+            
+            threats.append(create_threat(
+                ThreatCategoryEnum.SERVER_ATTACKS,
+                confidence,
+                "Potential Kerberos-based attack detected.",
+                [ind for ind in indicators if ind]
+            ))
+    
+    # DNS-based Attacks (actual DNS query/response artifacts)
+    dns_packets = [p for p in packet_features if p.get('dst_port') == 53]
+    
+    if len(dns_packets) > 20:
+        dns_attack_patterns = [
+            'zone transfer', 'axfr', 'ixfr', 
+            'notify', 'update', 'type any', 
+            'type=any', 'dnssec', 'dns query flood',
+            'malformed dns', 'dns lookup'
+        ]
+        
+        dns_attack_count = 0
+        dns_attack_examples = []
+        unique_query_types = set()
+        unique_domains = set()
+        
+        for packet in dns_packets:
+            payload = packet.get('payload_str', '').lower()
+            if not payload:
+                continue
+                
+            # Check for attack patterns
+            for pattern in dns_attack_patterns:
+                if pattern in payload:
+                    dns_attack_count += 1
+                    if len(dns_attack_examples) < 3:
+                        dns_attack_examples.append(pattern)
+            
+            # Extract DNS query types (looking for actual DNS record types in packets)
+            for qtype in ['a ', 'aaaa ', 'mx ', 'ns ', 'txt ', 'soa ', 'srv ', 
+                           'cname ', 'ptr ', 'any ', 'axfr ', 'ixfr ']:
+                if qtype in payload:
+                    unique_query_types.add(qtype.strip())
+            
+            # Extract queried domains (looking for actual domain names in DNS packets)
+            if 'query: ' in payload or 'question: ' in payload:
+                domains = re.findall(r'[a-zA-Z0-9][-a-zA-Z0-9.]{1,62}\.[a-zA-Z]{2,}', payload)
+                for domain in domains:
+                    if domain.count('.') > 0:  # Valid domain name
+                        unique_domains.add(domain)
+        
+        # Detect DNS tunneling (many unique subdomains queried)
+        tunnel_score = len(unique_domains) / 10 if unique_domains else 0
+        
+        # Detect zone transfers or enumeration attempts
+        enumeration_score = 0
+        if 'any' in unique_query_types or 'axfr' in unique_query_types:
+            enumeration_score += 10
+        enumeration_score += len(unique_query_types) * 2
+        
+        if dns_attack_count > 2 or tunnel_score > 5 or enumeration_score > 8:
+            confidence = min(0.6 + (dns_attack_count * 0.05) + (tunnel_score * 0.02) + (enumeration_score * 0.03), 0.9)
+            
+            indicators = [
+                f"{dns_attack_count} DNS attack indicators identified" if dns_attack_count > 0 else "",
+                f"Examples: {', '.join(dns_attack_examples)}" if dns_attack_examples else "",
+                f"{len(unique_domains)} unique domains queried" if unique_domains else "",
+                f"{len(unique_query_types)} different DNS query types used ({', '.join(unique_query_types)})" if unique_query_types else "",
+                f"DNS tunneling score: {tunnel_score:.1f}" if tunnel_score > 0 else "",
+                f"DNS enumeration score: {enumeration_score:.1f}" if enumeration_score > 0 else "",
+                "Possible DNS reconnaissance, enumeration, or tunneling"
+            ]
+            
+            threats.append(create_threat(
+                ThreatCategoryEnum.SERVER_ATTACKS,
+                confidence,
+                "Potential DNS-based attack detected.",
+                [ind for ind in indicators if ind]
+            ))
+    
+    # Service-specific Vulnerabilities Exploitation (actual vulnerability signatures)
+    service_vuln_patterns = {
+        # Remote services vulnerability signatures (actual exploit snippets/traffic)
+        'remote': [
+            'ms17-010', 'eternalblue', 'tree connect', 'named pipe',
+            'smb signing', 'null session', 'bluekeep', 'ms19-016', 
+            'rdesktop', 'rdp connection', 'cve-2019-0708', 
+            'ntlm_challenge', 'ntlmssp negotiate', 'ntlmssp challenge',
+            'smb2_tree_connect', 'smb2_create', 'smb_transaction', 
+            'ntlm_auth', 'kerberos_ticket', 'zerologon',
+            'netlogon_negotiate', 'secure channel', 'netlogon_auth',
+            'cve-2020-1472', 'HKLM\\software\\microsoft\\exchange',
+            'exchange server', '/owa/', '/ecp/'
+        ]
+    }
+    
+    vuln_exploit_counts = {category: 0 for category in service_vuln_patterns}
+    vuln_exploit_examples = {category: [] for category in service_vuln_patterns}
+    
+    for packet in packet_features:
+        payload = packet.get('payload_str', '').lower()
+        if not payload:
+            continue
+            
+        for category, patterns in service_vuln_patterns.items():
+            for pattern in patterns:
+                if pattern.lower() in payload:
+                    vuln_exploit_counts[category] += 1
+                    if len(vuln_exploit_examples[category]) < 3:
+                        vuln_exploit_examples[category].append(pattern)
+    
+    # Detect vulnerability exploitation attempts
+    for category, count in vuln_exploit_counts.items():
+        if count > 1:
+            confidence = min(0.7 + (count * 0.04), 0.95)
+            
+            category_names = {
+                'remote': 'Remote service'
+            }
+            
+            threats.append(create_threat(
+                ThreatCategoryEnum.SERVER_ATTACKS,
+                confidence,
+                f"Potential {category_names.get(category, '')} vulnerability exploitation attempt.",
+                [f"{count} vulnerability exploitation indicators identified",
+                 f"Examples: {', '.join(vuln_exploit_examples[category])}" if vuln_exploit_examples[category] else "", 
+                 f"Possible attempt to exploit known {category_names.get(category, '')} vulnerabilities"]
+            ))
+    
+    # Authentication Bypass Attempts (actual authentication bypass payloads)
+    auth_bypass_patterns = [
+        # Actual authentication bypass payloads
+        'basic: ', 'bearer: ', 'jwt: ', 'x-api-key: ',
+        'authorization: ', 'x-auth: ', 'cookie: auth=',
+        'cookie: session=', 'cookie: token=',
+        'alg:none', 'alg:"none"', 'alg:hs256', 'alg:rs256', 
+        'eyJhbGciOiJIUzI1', 'eyJhbGciOiJSUzI1',  # JWT headers
+        'jwks_uri', 'x.509', '.well-known/jwks.json'
+    ]
+    
+    auth_bypass_count = 0
+    auth_bypass_examples = []
+    
+    for packet in packet_features:
+        payload = packet.get('payload_str', '').lower()
+        if not payload:
+            continue
+            
+        for pattern in auth_bypass_patterns:
+            if pattern.lower() in payload:
+                auth_bypass_count += 1
+                if len(auth_bypass_examples) < 3:
+                    auth_bypass_examples.append(pattern)
+    
+    if auth_bypass_count > 1:
+        confidence = min(0.7 + (auth_bypass_count * 0.05), 0.9)
+        threats.append(create_threat(
+            ThreatCategoryEnum.SERVER_ATTACKS,
+            confidence,
+            "Potential authentication bypass attempt detected.",
+            [f"{auth_bypass_count} authentication bypass indicators identified", 
+             f"Examples: {', '.join(auth_bypass_examples)}" if auth_bypass_examples else "",
+             "Possible attempt to circumvent authentication controls"]
+        ))
+    
+    # SSL/TLS Attacks (actual TLS/SSL packet artifacts)
+    ssl_tls_packets = [p for p in packet_features if 
+                      p.get('dst_port') in [443, 636, 989, 990, 993, 995, 5061] or
+                      p.get('proto', '').upper() in ['SSL', 'TLS', 'HTTPS']]
+    
+    if ssl_tls_packets:
+        # Actual TLS/SSL attack signatures (binary/packet signatures)
+        ssl_attack_patterns = [
+            'heartbeat', '\x18\x03\x01',  # Heartbleed
+            'sslv2', 'sslv3', 'tls1.0',   # Outdated protocols
+            'fallback_scsv', 'downgrade', # Downgrade attacks
+            'compress_certificate', 'compress_context', # Compression attacks
+            'rc4_128', 'rc4', 'des_cbc', '3des_cbc', 'null_cipher', # Weak ciphers
+            'md5', 'export40', 'export56', 'export1024', # Weak algorithms
+            'dhe_export', 'rsa_export', # Export-grade cryptography
+            'golden_doodle', 'cve-2014-0160', 'cve-2016-0800' # Vulnerabilities by CVE
+        ]
+        
+        ssl_attack_count = 0
+        ssl_attack_examples = []
+        
+        for packet in ssl_tls_packets:
+            payload = packet.get('payload_str', '')
+            raw_payload = packet.get('raw_payload', b'')
+            
+            # Check string payload
+            if payload:
+                for pattern in ssl_attack_patterns:
+                    if pattern in payload.lower():
+                        ssl_attack_count += 1
+                        if len(ssl_attack_examples) < 3:
+                            ssl_attack_examples.append(pattern)
+            
+            # Check binary payload (for binary signatures)
+            if isinstance(raw_payload, bytes):
+                for pattern in [b'\x18\x03\x01', b'\x01\x00\x02', b'\x80\x24\x01']:  # Binary signatures
+                    if pattern in raw_payload:
+                        ssl_attack_count += 1
+                        if len(ssl_attack_examples) < 3:
+                            ssl_attack_examples.append(pattern.hex())
+        
+        if ssl_attack_count > 0:
+            confidence = min(0.75 + (ssl_attack_count * 0.05), 0.9)
+            threats.append(create_threat(
+                ThreatCategoryEnum.SERVER_ATTACKS,
+                confidence,
+                "Potential SSL/TLS vulnerability exploitation attempt.",
+                [f"{ssl_attack_count} SSL/TLS attack indicators identified", 
+                 f"Examples: {', '.join(ssl_attack_examples)}" if ssl_attack_examples else "",
+                 f"{len(ssl_tls_packets)} SSL/TLS packets analyzed",
+                 "Possible attempt to exploit encrypted channel vulnerabilities"]
+            ))
+    
+    # Credentials Dumping or Harvesting (actual credential dump signatures)
+    credential_dump_patterns = [
+        # Windows credential access (actual commands/signatures)
+        'mimikatz', 'sekurlsa::logonpasswords', 'sekurlsa::tickets',
+        'kerberos::list', 'lsadump::sam', 'lsadump::secrets',
+        'procdump -ma lsass.exe', 'comsvcs.dll, MiniDump',
+        'reg save hklm\\sam', 'reg save hklm\\system',
+        'powershell.exe -command "IEX (New-Object Net.WebClient)',
+        
+        # Linux credential access (actual commands/signatures)
+        'cat /etc/shadow', 'cat /etc/passwd', 'cat /etc/master.passwd',
+        'dump_memory', 'memory.dmp', '/proc/kcore', '/etc/sudoers',
+        'ssh_config', 'id_rsa', 'id_dsa', 'authorized_keys',
+        
+        # Database credentials (actual database password access)
+        'mysql -u root', 'sqlcmd -U sa', 'psql -U postgres',
+        'connection string', 'mongodb://username:password',
+        'redis-cli -a', 'postgresql password='
+    ]
+    
+    credential_dump_count = 0
+    credential_dump_examples = []
+    
+    for packet in packet_features:
+        payload = packet.get('payload_str', '').lower()
+        if not payload:
+            continue
+            
+        for pattern in credential_dump_patterns:
+            if pattern.lower() in payload:
+                credential_dump_count += 1
+                if len(credential_dump_examples) < 3:
+                    credential_dump_examples.append(pattern)
+    
+    if credential_dump_count > 1:
+        confidence = min(0.8 + (credential_dump_count * 0.03), 0.95)
+        threats.append(create_threat(
+            ThreatCategoryEnum.SERVER_ATTACKS,
+            confidence,
+            "Potential credential harvesting activity detected.",
+            [f"{credential_dump_count} credential access indicators identified", 
+             f"Examples: {', '.join(credential_dump_examples)}" if credential_dump_examples else "",
+             "Possible attempt to extract passwords or authentication tokens"]
+        ))
+    
     return threats
 
 def detect_known_signatures(packet_features):
@@ -2151,13 +2860,14 @@ def detect_malicious_behavior(packet_features, stats):
     # 8. Backdoor Detection
     backdoor_indicators = {
         'reverse_shell_patterns': [
-            'nc -e', 'bash -i', '/bin/sh', 'cmd.exe', 
-            'powershell -e', 'meterpreter', 'empire', 
-            'cobalt strike', 'remote administration'
+            'nc -e', 'nc.exe -e', 'bash -i', '/bin/sh -i', 'cmd.exe /c', 
+            'powershell -e', 'powershell -enc', 'meterpreter', 'empire', 
+            'cobalt strike', 'beacon_', 'c2_callback', 'remote shell',
+            'reverse_shell', 'bind_shell', '/dev/tcp/', 'socket.connect'
         ],
         'remote_access_count': sum(1 for p in packet_features 
             if any(pattern in p.get('payload_str', '').lower() for pattern in 
-                   ['rdp', 'ssh', 'remote desktop', 'teamviewer', 'anydesk'])),
+                ['rdp', 'ssh', 'remote desktop', 'teamviewer', 'anydesk'])),
         'unusual_ports': sum(1 for p in packet_features 
             if p.get('dst_port') > 1024 and p.get('dst_port') not in [3389, 5900, 5800]),
         'persistent_connections': len(set(
@@ -2166,25 +2876,238 @@ def detect_malicious_behavior(packet_features, stats):
         )),
         'privilege_escalation_hints': sum(1 for p in packet_features 
             if any(pattern in p.get('payload_str', '').lower() for pattern in 
-                   ['sudo', 'su -', 'setuid', 'elevation', 'token manipulation']))
+                ['sudo', 'su -', 'setuid', 'elevation', 'token manipulation']))
     }
-    
+
+    # Enhanced RAT detection - integrate with backdoor detection
+    additional_rat_indicators = {
+        'windows_specific': [
+            'darkcomet', 'remcos', 'njrat', 'revenge-rat', 'poison ivy',
+            'ghostrat', 'blackshades', 'luminosity', 'net remote'
+        ],
+        'unix_linux_specific': [
+            'reverse connection', 'python -c', 'perl -e', 'php -r',
+            'socat', 'ssh -R', 'bind shell'
+        ],
+        'macos_specific': [
+            'backdoor.macos', 'osascript', 'applescript', 'launchctl',
+            'eggshell', 'empyre', 'merlin'
+        ],
+        'cross_platform': [
+            'covenant', 'mythic', 'brute ratel', 'sliver', 'havoc'
+        ]
+    }
+
+    # Track RAT detection by OS type
+    rat_detection = {os_type: 0 for os_type in additional_rat_indicators.keys()}
+
+    # Check for RAT indicators beyond what's already covered
+    for packet in packet_features:
+        payload = packet.get('payload_str', '').lower() if packet.get('payload_str') else ''
+        if not payload:
+            continue
+            
+        # Check for RAT indicators by OS type
+        for os_type, indicators in additional_rat_indicators.items():
+            if any(indicator in payload for indicator in indicators):
+                rat_detection[os_type] += 1
+
+    # Add RAT detection info to backdoor detection
+    if any(count > 0 for count in rat_detection.values()):
+        backdoor_indicators['platform_specific_rat'] = sum(rat_detection.values())
+        backdoor_indicators['primary_target_os'] = max(rat_detection.items(), key=lambda x: x[1])[0]
+
+    # Create the backdoor threat if indicators are found
     if (backdoor_indicators['remote_access_count'] > 3 or 
         backdoor_indicators['unusual_ports'] > 5 or 
         backdoor_indicators['persistent_connections'] > 10 or 
-        backdoor_indicators['privilege_escalation_hints'] > 0):
+        backdoor_indicators['privilege_escalation_hints'] > 0 or
+        backdoor_indicators.get('platform_specific_rat', 0) > 0):
+        
+        # Build the threat indicators list
+        threat_indicators = [
+            f"Remote access attempts: {backdoor_indicators['remote_access_count']}",
+            f"Unusual port connections: {backdoor_indicators['unusual_ports']}",
+            f"Persistent network connections: {backdoor_indicators['persistent_connections']}",
+            f"Privilege escalation indicators: {backdoor_indicators['privilege_escalation_hints']}",
+        ]
+        
+        # Add OS-specific RAT indicators if detected
+        if backdoor_indicators.get('platform_specific_rat', 0) > 0:
+            threat_indicators.append(f"OS-specific RAT indicators: {backdoor_indicators['platform_specific_rat']}")
+            threat_indicators.append(f"Primary target OS: {backdoor_indicators['primary_target_os'].replace('_specific', '')}")
+        
+        # Add final indicator
+        threat_indicators.append("Potential unauthorized remote access attempt")
+        
+        # Calculate confidence based on the number of indicators
+        base_confidence = 0.80
+        if backdoor_indicators.get('platform_specific_rat', 0) > 0:
+            base_confidence += min(0.15, backdoor_indicators['platform_specific_rat'] * 0.01)
+        
         threats.append(create_threat(
             ThreatCategoryEnum.MALICIOUS_BEHAVIOR,
-            0.80,
+            min(0.95, base_confidence),  # Cap at 0.95
             "Advanced Backdoor Communication Detected",
+            threat_indicators
+        ))
+
+    # 9. Linux Rootkit Detection (completely new, no overlap)
+    linux_rootkit_indicators = [
+        'insmod', 'modprobe', 'kmod', 'lsmod', 'rmmod',
+        'hidden process', '/dev/mem', '/dev/kmem', 'syscall table',
+        'interrupt descriptor table', 'rootkit', '/proc/modules',
+        '/proc/kallsyms', 'kernel module', 'loadable module',
+        'kill -31', 'strace', 'ptrace', 'adore', 'suterusu',
+        'diamorphine', 'azazel', 'jynx', 'knark', 'modhide',
+        '/dev/.', '/tmp/.', '/lib/.', '/lib64/.', '/boot/.'
+    ]
+
+    linux_rootkit_matches = 0
+    linux_rootkit_details = []
+
+    for packet in packet_features:
+        payload = packet.get('payload_str', '').lower() if packet.get('payload_str') else ''
+        if not payload:
+            continue
+            
+        # Check for Linux rootkit indicators
+        matched_indicators = [indicator for indicator in linux_rootkit_indicators 
+                            if indicator in payload]
+        
+        if matched_indicators:
+            linux_rootkit_matches += len(matched_indicators)
+            linux_rootkit_details.extend(matched_indicators[:3])  # Limit to 3 indicators per packet
+
+    if linux_rootkit_matches > 2:
+        # Confidence increases with more matches
+        confidence = min(0.95, 0.80 + linux_rootkit_matches * 0.01)
+        
+        threats.append(create_threat(
+            ThreatCategoryEnum.MALICIOUS_BEHAVIOR,
+            confidence,
+            "Linux Rootkit Activity Detected",
             [
-                f"Remote access attempts: {backdoor_indicators['remote_access_count']}",
-                f"Unusual port connections: {backdoor_indicators['unusual_ports']}",
-                f"Persistent network connections: {backdoor_indicators['persistent_connections']}",
-                f"Privilege escalation indicators: {backdoor_indicators['privilege_escalation_hints']}",
-                "Potential unauthorized remote access attempt"
+                f"Rootkit indicators found: {linux_rootkit_matches}",
+                f"Suspicious components: {', '.join(set(linux_rootkit_details)[:5])}",
+                "Potential kernel-level compromise of Linux systems"
             ]
         ))
 
+    # 10. Enhanced Script Execution Detection
+    script_execution_patterns = {
+        'windows': [
+            'wscript.exe', 'cscript.exe', 'mshta.exe',
+            'certutil -decode', 'certutil -urlcache',
+            'bitsadmin /transfer', 'installutil.exe', 'regasm.exe',
+            'regsvcs.exe', 'msbuild.exe', 'ieexec.exe'
+        ],
+        'unix_linux': [
+            'eval $(', 'python -c', 'perl -e', 'ruby -e',
+            'php -r', 'curl | bash', 'wget | bash', '| sh',
+            'base64 -d', 'curl | sh', 'wget | sh'
+        ],
+        'macos': [
+            'osascript -e', 'system("', 'python -c',
+            'perl -e', 'ruby -e', 'curl | bash', 'curl | sh'
+        ]
+    }
+
+    script_execution_count = {os_type: 0 for os_type in script_execution_patterns.keys()}
+    script_execution_examples = {os_type: [] for os_type in script_execution_patterns.keys()}
+
+    for packet in packet_features:
+        payload = packet.get('payload_str', '').lower() if packet.get('payload_str') else ''
+        if not payload:
+            continue
+            
+        # Check for suspicious script execution patterns
+        for os_type, patterns in script_execution_patterns.items():
+            for pattern in patterns:
+                if pattern in payload:
+                    script_execution_count[os_type] += 1
+                    
+                    # Get the full command context when possible
+                    start_index = payload.find(pattern)
+                    if start_index != -1:
+                        end_index = payload.find('\n', start_index)
+                        if end_index == -1:
+                            end_index = min(start_index + 100, len(payload))
+                        
+                        command_context = payload[start_index:end_index]
+                        if len(script_execution_examples[os_type]) < 3:  # Limit to 3 examples per OS
+                            script_execution_examples[os_type].append(command_context)
+                    break
+
+    if any(count > 1 for count in script_execution_count.values()):
+        total_script_exec = sum(script_execution_count.values())
+        
+        # Confidence increases with more suspicious patterns
+        confidence = min(0.90, 0.70 + total_script_exec * 0.02)
+        
+        # Build indicators
+        script_indicators = []
+        for os_type, count in script_execution_count.items():
+            if count > 0:
+                script_indicators.append(f"{os_type.capitalize()} script execution: {count}")
+                
+                # Add examples if available
+                if script_execution_examples[os_type]:
+                    examples = '; '.join(script_execution_examples[os_type])
+                    if len(examples) > 100:
+                        examples = examples[:97] + '...'
+                    script_indicators.append(f"Example patterns: {examples}")
+        
+        threats.append(create_threat(
+            ThreatCategoryEnum.MALICIOUS_BEHAVIOR,
+            confidence,
+            "Suspicious Script Execution Detected",
+            script_indicators + ["Potential malicious code execution attempt"]
+        ))
+
+    # 11. Remote Code Execution (RCE) detection
+    rce_patterns = [
+        # Windows RCE actual command signatures
+        'cmd.exe /c', 'cmd /c', 'cmd /k', 'powershell -e', 'powershell -enc',
+        'powershell -exec bypass', 'powershell -nop', 'powershell iex',
+        'wscript.shell', 'rundll32.exe', 'regsvr32 /s /u /i:',
+        'mshta.exe http', 'certutil -urlcache -f', 'bitsadmin /transfer',
+        
+        # Linux RCE actual command signatures
+        'wget http', 'curl http', 'wget -O-|', 'curl -s|', 'bash -i',
+        '/dev/tcp/', 'nc -e', 'python -c', 'perl -e', 'ruby -e',
+        'bash -c', 'socat', 'wget|bash', 'curl|bash', 'curl|sh',
+        
+        # Common RCE payloads
+        'bash -i >& /dev/tcp/', 'bash -c', 'exec /bin/bash',
+        'perl -e \'use socket', 'python -c \'import socket',
+        'php -r', 'exec(\\"bash', 'system(', 'shell_exec(',
+        'proc_open', 'eval(base64_decode'
+    ]
+
+    rce_attempt_count = 0
+    rce_examples = []
+
+    for packet in packet_features:
+        payload = packet.get('payload_str', '').lower()
+        if not payload:
+            continue
+            
+        for pattern in rce_patterns:
+            if pattern.lower() in payload:
+                rce_attempt_count += 1
+                if len(rce_examples) < 3:
+                    rce_examples.append(pattern)
+
+    if rce_attempt_count > 1:
+        confidence = min(0.75 + (rce_attempt_count * 0.05), 0.95)
+        threats.append(create_threat(
+            ThreatCategoryEnum.MALICIOUS_BEHAVIOR,
+            confidence,
+            "Potential remote code execution (RCE) attempt detected.",
+            [f"{rce_attempt_count} RCE attempt indicators identified", 
+            f"Examples: {', '.join(rce_examples)}" if rce_examples else "",
+            "Possible attempt to execute arbitrary code on the server"]
+        ))
 
     return threats
